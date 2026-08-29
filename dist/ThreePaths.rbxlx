@@ -5888,9 +5888,9 @@ local function buildCity(parent: Instance, spec: CitySpec)
 			parent = city,
 		})
 	end
-	local side = Vector3.new(-toCenter.Z, 0, toCenter.X)
+	local crossDir = Vector3.new(-toCenter.Z, 0, toCenter.X)
 	plazaRoad(center + toCenter * radius, center - toCenter * radius * 0.35, 16)
-	plazaRoad(center - side * radius * 0.85, center + side * radius * 0.85, 12)
+	plazaRoad(center - crossDir * radius * 0.85, center + crossDir * radius * 0.85, 12)
 
 	-- Central dais the shrine/waypost stands on.
 	BuildKit.cylinder(city, "Plaza_Dais", center + Vector3.new(0, 1, 0) + (-toCenter) * radius * 0.22, 1.6, 70, roadColor, Enum.Material.Slate)
