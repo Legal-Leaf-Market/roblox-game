@@ -164,6 +164,9 @@ end
 
 function HudController.Init()
 	local screen = UiKit.screen("Hud", 10)
+	-- Respect Roblox's topbar so the medallion and identity line don't
+	-- slide under the platform's own buttons.
+	screen.IgnoreGuiInset = false
 
 	-- ------------------------ Top-left identity ------------------------
 	-- Realm medallion: a brush circle holding the realm number.

@@ -33,8 +33,11 @@ UiKit.RarityColors = {
 	mythic = Color3.fromRGB(163, 46, 36),
 }
 
+-- The reference sheet sets EVERYTHING in a classical serif: Garamond for
+-- running text and titles, Merriweather where the brush pressed harder.
 local TITLE_FONT = Enum.Font.Garamond
-local BODY_FONT = Enum.Font.Gotham
+local BODY_FONT = Enum.Font.Garamond
+local BOLD_FONT = Enum.Font.Merriweather
 
 function UiKit.screen(name: string, displayOrder: number): ScreenGui
 	local player = Players.LocalPlayer
@@ -59,6 +62,9 @@ local function stroked(instance: GuiObject, color: Color3?, thickness: number?)
 	stroke.Color = color or UiKit.Colors.stroke
 	stroke.Thickness = thickness or 1.6
 	stroke.Transparency = 0
+	-- On text objects, Contextual (the default) outlines the GLYPHS, not
+	-- the box; Border keeps it a frame line everywhere.
+	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 	stroke.Parent = instance
 end
 
@@ -79,6 +85,7 @@ local function doubleBorder(instance: GuiObject, thickness: number?)
 	innerStroke.Color = lineColor
 	innerStroke.Thickness = 1
 	innerStroke.Transparency = 0.35
+	innerStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 	innerStroke.Parent = inner
 end
 
@@ -102,9 +109,10 @@ function UiKit.label(parent: Instance, text: string, size: UDim2, position: UDim
 	label.Position = position
 	label.BackgroundTransparency = 1
 	label.Text = text
-	label.TextSize = opts.textSize or 14
+	-- Garamond runs small; a nudge keeps it as readable as the sans was.
+	label.TextSize = (opts.textSize or 14) + 1
 	label.TextColor3 = opts.color or UiKit.Colors.text
-	label.Font = if opts.title then TITLE_FONT elseif opts.bold then Enum.Font.GothamBold else BODY_FONT
+	label.Font = if opts.title then TITLE_FONT elseif opts.bold then BOLD_FONT else BODY_FONT
 	label.TextXAlignment = opts.xalign or Enum.TextXAlignment.Left
 	label.TextWrapped = opts.wrap == true
 	label.TextTruncate = if opts.wrap then Enum.TextTruncate.None else Enum.TextTruncate.AtEnd
@@ -122,9 +130,10 @@ function UiKit.button(parent: Instance, text: string, size: UDim2, position: UDi
 	button.BackgroundColor3 = opts.color or UiKit.Colors.panelLight
 	button.BorderSizePixel = 0
 	button.Text = text
-	button.TextSize = opts.textSize or 14
+	button.TextSize = (opts.textSize or 14) + 2
 	button.TextColor3 = opts.textColor or UiKit.Colors.text
-	button.Font = Enum.Font.GothamBold
+	-- Serif caps, like the sheet's MAIN BUTTON.
+	button.Font = BOLD_FONT
 	button.AutoButtonColor = true
 	button.Parent = parent
 	rounded(button)
@@ -171,7 +180,7 @@ function UiKit.textBox(parent: Instance, placeholder: string, size: UDim2, posit
 	box.PlaceholderText = placeholder
 	box.PlaceholderColor3 = UiKit.Colors.textDim
 	box.Text = ""
-	box.TextSize = 14
+	box.TextSize = 15
 	box.TextColor3 = UiKit.Colors.text
 	box.Font = BODY_FONT
 	box.ClearTextOnFocus = false

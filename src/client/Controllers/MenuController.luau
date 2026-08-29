@@ -122,15 +122,15 @@ function MenuController.Init()
 		end
 	end
 
-	UiKit.button(panel, "Enter the World", UDim2.new(1, -80, 0, 46), UDim2.fromOffset(40, 122), function()
+	UiKit.button(panel, "ENTER THE WORLD", UDim2.new(1, -80, 0, 46), UDim2.fromOffset(40, 122), function()
 		showSub("")
 		setOpen(false)
 	end, { color = UiKit.Colors.gold, textColor = UiKit.Colors.panel, textSize = 18 })
 
-	UiKit.button(panel, "Settings", UDim2.new(0.5, -50, 0, 38), UDim2.fromOffset(40, 180), function()
+	UiKit.button(panel, "SETTINGS", UDim2.new(0.5, -50, 0, 38), UDim2.fromOffset(40, 180), function()
 		showSub("settings")
 	end)
-	UiKit.button(panel, "Controls", UDim2.new(0.5, -50, 0, 38), UDim2.new(0.5, 10, 0, 180), function()
+	UiKit.button(panel, "CONTROLS", UDim2.new(0.5, -50, 0, 38), UDim2.new(0.5, 10, 0, 180), function()
 		showSub("controls")
 	end)
 
