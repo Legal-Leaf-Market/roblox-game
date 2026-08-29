@@ -60,7 +60,7 @@ local function renderStats()
 
 	-- Breakthrough orb: fills toward the next realm; burns when ready. Its
 	-- color is the player's path.
-	local diameter = 8 + 54 * math.sqrt(breakFraction)
+	local diameter = 6 + 36 * math.sqrt(breakFraction)
 	orbFill.Size = UDim2.fromOffset(diameter, diameter)
 	local pathForOrb = if stats.path then Paths[stats.path :: string] else nil
 	orbFill.BackgroundColor3 = if pathForOrb then pathForOrb.accentColor else UiKit.Colors.textDim
@@ -136,7 +136,7 @@ local function toast(text: string, color: Color3?)
 		end
 	end
 	local card = Instance.new("Frame")
-	card.Size = UDim2.new(1, 0, 0, 30)
+	card.Size = UDim2.new(1, 0, 0, 24)
 	card.BackgroundColor3 = UiKit.Colors.panel
 	card.BackgroundTransparency = 0.08
 	card.BorderSizePixel = 0
@@ -149,8 +149,8 @@ local function toast(text: string, color: Color3?)
 	stroke.Color = UiKit.Colors.ink
 	stroke.Thickness = 1.4
 	stroke.Parent = card
-	local label = UiKit.label(card, text, UDim2.new(1, -20, 1, 0), UDim2.fromOffset(10, 0), {
-		textSize = 14,
+	local label = UiKit.label(card, text, UDim2.new(1, -16, 1, 0), UDim2.fromOffset(8, 0), {
+		textSize = 11,
 		color = color or UiKit.Colors.ink,
 		bold = true,
 		xalign = Enum.TextXAlignment.Center,
@@ -176,7 +176,7 @@ function HudController.Init()
 	-- ------------------------ Top-right identity -----------------------
 	-- Realm medallion: a brush circle holding the realm number, pinned to
 	-- the top-right corner; the vitals block hangs to its left.
-	local medallion = UiKit.frame(screen, UDim2.fromOffset(56, 56), UDim2.new(1, -72, 0, 14))
+	local medallion = UiKit.frame(screen, UDim2.fromOffset(42, 42), UDim2.new(1, -54, 0, 10))
 	local medallionCorner = medallion:FindFirstChildOfClass("UICorner")
 	if medallionCorner then
 		medallionCorner.CornerRadius = UDim.new(1, 0)
@@ -186,7 +186,7 @@ function HudController.Init()
 	medallionStroke.Thickness = 2.4
 	medallionStroke.Parent = medallion
 	realmMedallion = UiKit.label(medallion, "1", UDim2.fromScale(1, 1), UDim2.fromScale(0, 0), {
-		textSize = 28,
+		textSize = 21,
 		title = true,
 		bold = true,
 		xalign = Enum.TextXAlignment.Center,
@@ -194,31 +194,31 @@ function HudController.Init()
 
 	-- Name, identity line, and the brush bars.
 	local vitals = Instance.new("Frame")
-	vitals.Size = UDim2.fromOffset(320, 152)
-	vitals.Position = UDim2.new(1, -404, 0, 12)
+	vitals.Size = UDim2.fromOffset(250, 104)
+	vitals.Position = UDim2.new(1, -312, 0, 10)
 	vitals.BackgroundTransparency = 1
 	vitals.Parent = screen
 
-	nameLabel = UiKit.label(vitals, player.DisplayName, UDim2.new(1, 0, 0, 22), UDim2.fromOffset(0, 0), {
-		textSize = 19,
+	nameLabel = UiKit.label(vitals, player.DisplayName, UDim2.new(1, 0, 0, 18), UDim2.fromOffset(0, 0), {
+		textSize = 15,
 		title = true,
 		bold = true,
 	})
 	nameLabel.TextStrokeColor3 = UiKit.Colors.panel
 	nameLabel.TextStrokeTransparency = 0.5
-	identityLabel = UiKit.label(vitals, "", UDim2.new(1, 0, 0, 16), UDim2.fromOffset(0, 22), {
-		textSize = 12,
+	identityLabel = UiKit.label(vitals, "", UDim2.new(1, 0, 0, 13), UDim2.fromOffset(0, 18), {
+		textSize = 9,
 	})
 	identityLabel.TextStrokeColor3 = UiKit.Colors.panel
 	identityLabel.TextStrokeTransparency = 0.4
 
-	UiKit.label(vitals, "CULTIVATION", UDim2.fromOffset(110, 12), UDim2.fromOffset(0, 44), { textSize = 10, bold = true })
-	xpBar = UiKit.bar(vitals, UDim2.fromOffset(190, 13), UDim2.fromOffset(0, 57), UiKit.Colors.xp)
-	xpValue = UiKit.label(vitals, "", UDim2.fromOffset(120, 13), UDim2.fromOffset(198, 57), { textSize = 11 })
+	UiKit.label(vitals, "CULTIVATION", UDim2.fromOffset(110, 10), UDim2.fromOffset(0, 34), { textSize = 8, bold = true })
+	xpBar = UiKit.bar(vitals, UDim2.fromOffset(150, 10), UDim2.fromOffset(0, 45), UiKit.Colors.xp)
+	xpValue = UiKit.label(vitals, "", UDim2.fromOffset(94, 10), UDim2.fromOffset(156, 45), { textSize = 9 })
 	xpValue.TextStrokeColor3 = UiKit.Colors.panel
 	xpValue.TextStrokeTransparency = 0.4
 
-	stonesLabel = UiKit.label(vitals, "", UDim2.new(1, 0, 0, 14), UDim2.fromOffset(0, 76), { textSize = 11 })
+	stonesLabel = UiKit.label(vitals, "", UDim2.new(1, 0, 0, 12), UDim2.fromOffset(0, 60), { textSize = 9 })
 	stonesLabel.TextStrokeColor3 = UiKit.Colors.panel
 	stonesLabel.TextStrokeTransparency = 0.4
 
@@ -231,17 +231,17 @@ function HudController.Init()
 		{ caption = "Sect", panel = "sect" },
 		{ caption = "Menu", panel = "menu" },
 	}
-	local buttonWidth = 66
-	local rowWidth = #menuEntries * (buttonWidth + 6)
+	local buttonWidth = 50
+	local rowWidth = #menuEntries * (buttonWidth + 4)
 	for index, entry in menuEntries do
-		UiKit.button(screen, entry.caption, UDim2.fromOffset(buttonWidth, 26), UDim2.new(1, -16 - rowWidth + (index - 1) * (buttonWidth + 6), 0, 172), function()
+		UiKit.button(screen, entry.caption, UDim2.fromOffset(buttonWidth, 18), UDim2.new(1, -12 - rowWidth + (index - 1) * (buttonWidth + 4), 0, 120), function()
 			Panels.toggle(entry.panel)
-		end, { textSize = 10 })
+		end, { textSize = 7 })
 	end
 
 	-- Meditation indicator.
-	meditateLabel = UiKit.label(screen, "~ Meditating: qi gathers, the dao whispers ~", UDim2.new(0, 420, 0, 24), UDim2.new(0.5, -210, 0, 60), {
-		textSize = 16,
+	meditateLabel = UiKit.label(screen, "~ Meditating: qi gathers, the dao whispers ~", UDim2.new(0, 360, 0, 20), UDim2.new(0.5, -180, 0, 52), {
+		textSize = 14,
 		title = true,
 		xalign = Enum.TextXAlignment.Center,
 	})
@@ -250,16 +250,16 @@ function HudController.Init()
 	meditateLabel.Visible = false
 
 	-- --------------------- Vital bars above the hotbar -----------------
-	local barsWidth = 320
+	local barsWidth = 230
 	local bottomBars = Instance.new("Frame")
-	bottomBars.Size = UDim2.fromOffset(barsWidth, 56)
-	bottomBars.Position = UDim2.new(0.5, -barsWidth / 2, 1, -168)
+	bottomBars.Size = UDim2.fromOffset(barsWidth, 38)
+	bottomBars.Position = UDim2.new(0.5, -barsWidth / 2, 1, -122)
 	bottomBars.BackgroundTransparency = 1
 	bottomBars.Parent = screen
 
-	healthBar = UiKit.bar(bottomBars, UDim2.new(1, 0, 0, 16), UDim2.fromOffset(0, 0), UiKit.Colors.health)
-	qiBar = UiKit.bar(bottomBars, UDim2.new(1, 0, 0, 16), UDim2.fromOffset(0, 19), UiKit.Colors.qi)
-	staminaBar = UiKit.bar(bottomBars, UDim2.new(1, 0, 0, 12), UDim2.fromOffset(0, 38), UiKit.Colors.stamina)
+	healthBar = UiKit.bar(bottomBars, UDim2.new(1, 0, 0, 11), UDim2.fromOffset(0, 0), UiKit.Colors.health)
+	qiBar = UiKit.bar(bottomBars, UDim2.new(1, 0, 0, 11), UDim2.fromOffset(0, 13), UiKit.Colors.qi)
+	staminaBar = UiKit.bar(bottomBars, UDim2.new(1, 0, 0, 8), UDim2.fromOffset(0, 26), UiKit.Colors.stamina)
 
 	ClientState.StaminaChanged:Connect(function(current: number, max: number)
 		staminaBar.set(math.clamp(current / math.max(max, 1), 0, 1), "")
@@ -288,12 +288,12 @@ function HudController.Init()
 
 	-- ------------------------------ Hotbar -----------------------------
 	-- Slots 1-3, the breakthrough orb, slots 4-6.
-	local slotSize = 84
-	local orbSize = 76
+	local slotSize = 54
+	local orbSize = 48
 	local hotbarWidth = Config.SLOT_COUNT * (slotSize + 6) + orbSize + 12
 	local hotbar = Instance.new("Frame")
 	hotbar.Size = UDim2.fromOffset(hotbarWidth, slotSize)
-	hotbar.Position = UDim2.new(0.5, -hotbarWidth / 2, 1, -slotSize - 14)
+	hotbar.Position = UDim2.new(0.5, -hotbarWidth / 2, 1, -slotSize - 10)
 	hotbar.BackgroundTransparency = 1
 	hotbar.Parent = screen
 
@@ -317,7 +317,7 @@ function HudController.Init()
 	orbFillCorner.CornerRadius = UDim.new(1, 0)
 	orbFillCorner.Parent = orbFill
 	orbLabel = UiKit.label(orb, "0%", UDim2.fromScale(1, 1), UDim2.fromScale(0, 0), {
-		textSize = 15,
+		textSize = 11,
 		bold = true,
 		xalign = Enum.TextXAlignment.Center,
 		color = UiKit.Colors.panel,
@@ -335,13 +335,13 @@ function HudController.Init()
 		slotStroke.Color = UiKit.Colors.ink
 		slotStroke.Thickness = 1.6
 		slotStroke.Parent = root
-		local key = UiKit.label(root, tostring(slot), UDim2.fromOffset(18, 16), UDim2.fromOffset(6, 3), {
-			textSize = 13,
+		local key = UiKit.label(root, tostring(slot), UDim2.fromOffset(14, 12), UDim2.fromOffset(4, 2), {
+			textSize = 10,
 			color = UiKit.Colors.panel,
 			bold = true,
 		})
-		local name = UiKit.label(root, "", UDim2.new(1, -8, 0, 44), UDim2.fromOffset(4, 22), {
-			textSize = 12,
+		local name = UiKit.label(root, "", UDim2.new(1, -6, 0, 32), UDim2.fromOffset(3, 15), {
+			textSize = 9,
 			color = UiKit.Colors.panel,
 			xalign = Enum.TextXAlignment.Center,
 			wrap = true,
@@ -360,8 +360,8 @@ function HudController.Init()
 	end
 
 	-- Hints footer.
-	hintsLabel = UiKit.label(screen, "1-6 Cast   Shift Sprint   Q Dash   O Qi Step   T Arts   R Destiny   I Bag   N Sect   G Meditate   M Menu", UDim2.new(0, 800, 0, 18), UDim2.new(0.5, -400, 1, -192), {
-		textSize = 13,
+	hintsLabel = UiKit.label(screen, "1-6 Cast   Shift Sprint   Q Dash   O Qi Step   T Arts   R Destiny   I Bag   N Sect   G Meditate   M Menu", UDim2.new(0, 640, 0, 14), UDim2.new(0.5, -320, 1, -140), {
+		textSize = 9,
 		xalign = Enum.TextXAlignment.Center,
 	})
 	hintsLabel.TextStrokeColor3 = UiKit.Colors.panel
@@ -369,8 +369,8 @@ function HudController.Init()
 
 	-- Toasts.
 	toastArea = Instance.new("Frame")
-	toastArea.Size = UDim2.new(0, 460, 0, 220)
-	toastArea.Position = UDim2.new(0.5, -230, 0, 96)
+	toastArea.Size = UDim2.new(0, 360, 0, 170)
+	toastArea.Position = UDim2.new(0.5, -180, 0, 72)
 	toastArea.BackgroundTransparency = 1
 	toastArea.Parent = screen
 	local toastLayout = Instance.new("UIListLayout")
