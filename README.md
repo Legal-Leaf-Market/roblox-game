@@ -1,48 +1,66 @@
-# Roblox game (Rojo project)
+# Three Paths (working title)
 
-The game's source of truth lives here in git, not in Studio. Rojo maps the
-`src/` tree into a Roblox place; you edit `.luau` files in your editor and
-Studio receives them live.
+A Roblox cultivation game: three path cities around Heavenpillar Mountain, a
+mine-and-forge underworld beneath it, a qi/realm progression, player-designed
+techniques, and Destiny spins across 124 races of Chinese myth.
 
-## One-time setup
+All of it — world included — is generated from the Luau source in this repo.
+Nothing is hand-placed in Studio, so a clean checkout builds the whole game.
 
-1. Install [Rokit](https://github.com/rojo-rbx/rokit) (or Aftman), then from
-   this directory run `rokit install` (or `aftman install`) to get the pinned
-   Rojo version.
-2. In Roblox Studio, install the Rojo plugin (the Rojo CLI can do it for you:
-   `rojo plugin install`).
+## Quickest preview (no plugins)
 
-## Daily loop
+1. Download `dist/ThreePaths.rbxlx` from this repo.
+2. Double-click it; Roblox Studio opens the place.
+3. Press Play. The world builds itself at server start.
 
-```sh
-rojo serve
-```
+That file is a committed build for convenience and may lag the source; CI
+rebuilds a fresh one on every push (see below).
 
-Then in Studio: open your place, click the Rojo plugin, Connect. Edits to
-files under `src/` appear in Studio immediately. To produce a standalone
-place file instead: `rojo build -o build.rbxlx`.
+## Dev loop (live sync)
 
-Publishing to Roblox's servers stays a Studio action (File > Publish to
-Roblox), done from a place that is connected to, or built from, this project.
+1. Clone the repo; install [Rokit](https://github.com/rojo-rbx/rokit) or
+   Aftman, then run `rokit install` (or `aftman install`) here to get the
+   pinned Rojo.
+2. In Studio, install the Rojo plugin: `rojo plugin install`.
+3. Run `rojo serve` in the repo, open your place in Studio, click the Rojo
+   plugin, Connect. Edits to `src/` appear live.
+
+## Deploy pipeline (the Vercel analogy)
+
+`.github/workflows/build-and-deploy.yml` runs on every push to `main`:
+typecheck (luau-lsp, strict), `rojo build`, upload the place file as an
+artifact — and, once secrets are set, publish straight to the live Roblox
+place through the official Open Cloud API. Push to `main` = game updated.
+
+One-time setup, after publishing the place from Studio once
+(File > Publish to Roblox):
+
+1. On [create.roblox.com](https://create.roblox.com), open Creator Dashboard >
+   the experience; note the **Universe ID** and start place's **Place ID**.
+2. Creator Dashboard > Open Cloud > API Keys: create a key with the
+   `universe-places:write` scope, scoped to that experience.
+3. In this GitHub repo: Settings > Secrets and variables > Actions, add
+   `ROBLOX_API_KEY`, `ROBLOX_UNIVERSE_ID`, `ROBLOX_PLACE_ID`.
+
+Until the secrets exist the workflow still typechecks and builds; the publish
+step skips itself politely.
 
 ## Layout
 
 | Path | Syncs to | Purpose |
 |---|---|---|
-| `src/shared/` | `ReplicatedStorage.Shared` | Modules both sides use: `Net` (all remotes), `Trove` (cleanup), `Config` |
-| `src/server/` | `ServerScriptService.Server` | Server bootstrap + `Systems/` modules |
-| `src/client/` | `StarterPlayer.StarterPlayerScripts.Client` | Client bootstrap + `Controllers/` modules |
+| `src/shared/` | `ReplicatedStorage.Shared` | `Net` (all remotes), `Types`, `Config`, `StatCalc`, `TechniqueMath`, `RateLimit`, `Trove`, and `Data/` (realms, paths, races, talents, elements, forms, ores, items, missions) |
+| `src/server/` | `ServerScriptService.Server` | Bootstrap + `Systems/` (data, qi, paths, destiny, techniques, combat, mining, forge, world builder + `World/`) |
+| `src/client/` | `StarterPlayer.StarterPlayerScripts.Client` | Bootstrap + `Controllers/` (menu, HUD, casting/VFX, technique forge, destiny, inventory, crafting, dialogue, meditation) + `Modules/` (UiKit, ClientState, ClientSettings) |
+
+Game design details: `docs/DESIGN.md`.
 
 ## Conventions
 
-- `--!strict` at the top of every script.
-- Services via `game:GetService()`, never `game.Players` style indexing.
-- `task.wait/spawn/delay` only; the legacy globals are banned.
-- The server is authoritative for anything that matters (currency, cooldowns,
-  damage, position checks). Remotes exist only in `src/shared/Net.luau`;
-  declare a name there before using it anywhere.
-- A gameplay feature is a ModuleScript in `Systems/` (server) or
-  `Controllers/` (client) returning optional `Init()` and `Start()`. The
-  bootstrappers run every `Init()` first, then every `Start()`.
-- Event connections are owned by a `Trove`; per-player ones go on the Trove
-  from `PlayerLifecycle.GetTrove(player)` so they die with the player.
+- `--!strict` everywhere; CI fails on any luau-lsp finding.
+- Services via `game:GetService()`; `task.*` only, never legacy `wait/spawn/delay`.
+- The server is authoritative for everything that matters. Remotes exist only
+  in `src/shared/Net.luau`; declare a name there before using it.
+- A feature is a ModuleScript in `Systems/` (server) or `Controllers/`
+  (client) with optional `Init()`/`Start()`; the bootstrappers wire it up.
+- All world geometry goes through `World/BuildKit.luau`.

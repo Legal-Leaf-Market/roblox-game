@@ -15,11 +15,33 @@ local FOLDER_NAME = "Remotes"
 
 -- Every remote in the game is declared here and nowhere else.
 local REMOTE_EVENTS: { string } = {
-	-- e.g. "NotifyPlayer",
+	-- Server -> client state pushes
+	"StatsChanged", -- qi, realm, xp, path, race, spirit stones, meditating
+	"InventoryChanged", -- ores, items, equipped gear
+	"TechniquesChanged", -- designed techniques + hotbar slots
+	"DestinyChanged", -- owned/equipped races and talents, spin counts
+	"SpinResult", -- outcome of a race/talent spin, for the reveal animation
+	"Notify", -- toast message { text, color? }
+	"OpenCrafting", -- player used the Spirit Forge prompt
+	"DwarfDialogue", -- mission dialogue payload
+	"TechniqueVFX", -- broadcast: someone cast a technique / broke through
+
+	-- Client -> server intents
+	"MeditateSet", -- (meditating: boolean)
+	"CastTechnique", -- (slot: number, aimPosition: Vector3)
 }
 
 local REMOTE_FUNCTIONS: { string } = {
-	-- e.g. "RequestInventory",
+	"SpinRace", -- roll a new race (free spin if any, else spirit stones)
+	"SpinTalent", -- roll a new talent
+	"EquipRace", -- switch to any owned race
+	"EquipTalent", -- set the equipped talent list
+	"CreateTechnique", -- design a new technique
+	"DeleteTechnique",
+	"EquipTechnique", -- bind a technique to a hotbar slot
+	"CraftItem", -- forge a weapon/armor from ores
+	"EquipItem", -- equip owned weapon/armor
+	"MissionAction", -- "accept" | "turnin" at the dwarf
 }
 
 local Net = {}
@@ -47,13 +69,14 @@ function Net.remoteEvent(name: string): RemoteEvent
 	assertDeclared(name, REMOTE_EVENTS, "RemoteEvent")
 	local folder = getFolder()
 	if RunService:IsServer() then
-		local remote = folder:FindFirstChild(name)
-		if remote == nil then
-			remote = Instance.new("RemoteEvent")
-			remote.Name = name
-			remote.Parent = folder
+		local existing = folder:FindFirstChild(name)
+		if existing then
+			return existing :: RemoteEvent
 		end
-		return remote :: RemoteEvent
+		local remote = Instance.new("RemoteEvent")
+		remote.Name = name
+		remote.Parent = folder
+		return remote
 	end
 	return folder:WaitForChild(name) :: RemoteEvent
 end
@@ -62,15 +85,28 @@ function Net.remoteFunction(name: string): RemoteFunction
 	assertDeclared(name, REMOTE_FUNCTIONS, "RemoteFunction")
 	local folder = getFolder()
 	if RunService:IsServer() then
-		local remote = folder:FindFirstChild(name)
-		if remote == nil then
-			remote = Instance.new("RemoteFunction")
-			remote.Name = name
-			remote.Parent = folder
+		local existing = folder:FindFirstChild(name)
+		if existing then
+			return existing :: RemoteFunction
 		end
-		return remote :: RemoteFunction
+		local remote = Instance.new("RemoteFunction")
+		remote.Name = name
+		remote.Parent = folder
+		return remote
 	end
 	return folder:WaitForChild(name) :: RemoteFunction
+end
+
+-- Server bootstrap: create every declared remote up front so clients never
+-- wait on one that a lazily-required system hasn't touched yet.
+function Net.initServer()
+	assert(RunService:IsServer(), "Net.initServer is server-only")
+	for _, name in REMOTE_EVENTS do
+		Net.remoteEvent(name)
+	end
+	for _, name in REMOTE_FUNCTIONS do
+		Net.remoteFunction(name)
+	end
 end
 
 return Net

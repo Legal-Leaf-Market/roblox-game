@@ -36,7 +36,8 @@ function PlayerLifecycle.Init()
 
 	-- Players who joined before this system initialized (Studio test edge case).
 	for _, player in Players:GetPlayers() do
-		if playerTroves[player] == nil then
+		local existing: Trove.Trove? = playerTroves[player]
+		if existing == nil then
 			onPlayerAdded(player)
 		end
 	end

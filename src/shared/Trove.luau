@@ -28,7 +28,9 @@ end
 
 -- Track any cleanable object. Returns the same object so calls can be inlined:
 --   local part = trove:Add(Instance.new("Part"))
-function Trove.Add<T>(self: Trove, item: T & Cleanable): T
+-- (Typed as any -> any rather than generically: a generic method makes the
+-- self-referential Trove type incompatible with itself under strict mode.)
+function Trove.Add(self: Trove, item: any): any
 	assert(not self._cleaning, "Cannot add to a Trove while it is cleaning")
 	table.insert(self._items, item)
 	return item
@@ -36,7 +38,7 @@ end
 
 -- Convenience wrapper: connect and track the connection in one call.
 function Trove.Connect(self: Trove, signal: RBXScriptSignal, handler: (...any) -> ()): RBXScriptConnection
-	return self:Add(signal:Connect(handler))
+	return self:Add(signal:Connect(handler)) :: RBXScriptConnection
 end
 
 -- Release everything in reverse insertion order.

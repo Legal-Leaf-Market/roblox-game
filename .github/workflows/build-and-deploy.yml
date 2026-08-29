@@ -1,0 +1,72 @@
+# Build & Deploy: the Roblox equivalent of the GitHub -> Vercel pipeline.
+#
+# Every push to main: typecheck (luau-lsp, strict) -> build the place file
+# (Rojo) -> upload it as a workflow artifact. If the three ROBLOX_* secrets
+# are configured, the same place file is then PUBLISHED live to the Roblox
+# place via the official Open Cloud API, and the game updates for players.
+#
+# Required repository secrets for auto-deploy (Settings > Secrets > Actions):
+#   ROBLOX_API_KEY      Open Cloud key from create.roblox.com/dashboard/credentials
+#                       with the "universe-places:write" scope for the experience
+#   ROBLOX_UNIVERSE_ID  The experience's Universe ID (Creator Dashboard)
+#   ROBLOX_PLACE_ID     The start place's Place ID
+#
+# Tools are pinned official release binaries downloaded over HTTPS, not
+# third-party marketplace actions, so the supply chain is just Rojo and
+# luau-lsp themselves.
+
+name: Build & Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rojo and luau-lsp
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          curl -sSL -o /tmp/rojo.zip https://github.com/rojo-rbx/rojo/releases/download/v7.4.4/rojo-7.4.4-linux-x86_64.zip
+          unzip -o /tmp/rojo.zip -d "$HOME/.local/bin"
+          curl -sSL -o /tmp/luau-lsp.zip https://github.com/JohnnyMorganz/luau-lsp/releases/latest/download/luau-lsp-linux-x86_64.zip
+          unzip -o /tmp/luau-lsp.zip -d "$HOME/.local/bin"
+          chmod +x "$HOME/.local/bin/rojo" "$HOME/.local/bin/luau-lsp"
+          curl -sSL -o /tmp/globalTypes.d.luau https://raw.githubusercontent.com/JohnnyMorganz/luau-lsp/main/scripts/globalTypes.d.luau
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Typecheck
+        run: |
+          rojo sourcemap default.project.json -o sourcemap.json
+          luau-lsp analyze --sourcemap sourcemap.json --definitions /tmp/globalTypes.d.luau src/
+
+      - name: Build place file
+        run: rojo build default.project.json -o ThreePaths.rbxlx
+
+      - name: Upload place artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ThreePaths-place
+          path: ThreePaths.rbxlx
+
+      - name: Publish to Roblox (Open Cloud)
+        env:
+          ROBLOX_API_KEY: ${{ secrets.ROBLOX_API_KEY }}
+          ROBLOX_UNIVERSE_ID: ${{ secrets.ROBLOX_UNIVERSE_ID }}
+          ROBLOX_PLACE_ID: ${{ secrets.ROBLOX_PLACE_ID }}
+        run: |
+          if [ -z "$ROBLOX_API_KEY" ] || [ -z "$ROBLOX_UNIVERSE_ID" ] || [ -z "$ROBLOX_PLACE_ID" ]; then
+            echo "ROBLOX_* secrets not configured; skipping publish. The built place is available as a workflow artifact."
+            exit 0
+          fi
+          curl --fail-with-body -X POST \
+            "https://apis.roblox.com/universes/v1/${ROBLOX_UNIVERSE_ID}/places/${ROBLOX_PLACE_ID}/versions?versionType=Published" \
+            -H "x-api-key: ${ROBLOX_API_KEY}" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @ThreePaths.rbxlx
+          echo "Published to Roblox."

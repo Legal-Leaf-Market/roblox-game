@@ -26,7 +26,7 @@ end
 
 for name, system in systems do
 	if system.Init then
-		local ok, err = pcall(system.Init)
+		local ok, err = pcall(system.Init :: any)
 		if not ok then
 			warn(`[Server] {name}.Init() failed: {err}`)
 		end
@@ -36,7 +36,7 @@ end
 for name, system in systems do
 	if system.Start then
 		task.spawn(function()
-			local ok, err = pcall(system.Start :: () -> ())
+			local ok, err = pcall(system.Start :: any)
 			if not ok then
 				warn(`[Server] {name}.Start() failed: {err}`)
 			end

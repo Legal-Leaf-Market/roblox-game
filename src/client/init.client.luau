@@ -25,7 +25,7 @@ end
 
 for name, controller in controllers do
 	if controller.Init then
-		local ok, err = pcall(controller.Init)
+		local ok, err = pcall(controller.Init :: any)
 		if not ok then
 			warn(`[Client] {name}.Init() failed: {err}`)
 		end
@@ -35,7 +35,7 @@ end
 for name, controller in controllers do
 	if controller.Start then
 		task.spawn(function()
-			local ok, err = pcall(controller.Start :: () -> ())
+			local ok, err = pcall(controller.Start :: any)
 			if not ok then
 				warn(`[Client] {name}.Start() failed: {err}`)
 			end
