@@ -204,6 +204,27 @@ function Flora.build(parent: Instance)
 			end
 		end
 	end
+
+	-- Trees inside every city's walls, like the reference village: blossoms
+	-- and pines between the houses (biome-appropriate outside the crater).
+	for key, center in Cities.POSITIONS :: { [string]: Vector3 } do
+		local cityRng = Random.new(31 + #key)
+		for _ = 1, 7 do
+			local angle = cityRng:NextNumber(0, math.pi * 2)
+			local dist = cityRng:NextNumber(70, 220)
+			local position = Vector3.new(center.X + math.cos(angle) * dist, center.Y, center.Z + math.sin(angle) * dist)
+			local biome: Island.Biome = if key == "central" then "green" else Island.biomeAt(position.X, position.Z)
+			if biome == "snow" then
+				pineTree(parent, position, cityRng, true)
+			elseif biome == "desert" then
+				cactus(parent, position, cityRng)
+			elseif cityRng:NextNumber() < 0.6 then
+				blossomTree(parent, position, cityRng)
+			else
+				pineTree(parent, position, cityRng, false)
+			end
+		end
+	end
 end
 
 return Flora

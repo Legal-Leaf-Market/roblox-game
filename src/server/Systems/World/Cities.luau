@@ -114,6 +114,16 @@ type CitySpec = {
 	accent: Color3,
 }
 
+-- How each city carries itself: seed (its own village layout), snap
+-- (orderly compass-aligned vs loose organic rotation), mixThatch (some
+-- roofs go straw, Freewind's habit).
+local PERSONALITIES: { [string]: { seed: number, snap: boolean, mixThatch: boolean } } = {
+	orthodox = { seed = 101, snap = true, mixThatch = false },
+	demonic = { seed = 202, snap = false, mixThatch = false },
+	unorthodox = { seed = 303, snap = false, mixThatch = true },
+	central = { seed = 404, snap = true, mixThatch = false },
+}
+
 local function buildCity(parent: Instance, spec: CitySpec)
 	local center = Cities.POSITIONS[spec.key]
 	local theme = THEMES[spec.key]
@@ -140,23 +150,101 @@ local function buildCity(parent: Instance, spec: CitySpec)
 	local sign = BuildKit.paifang(city, Vector3.new(gatePos.X, center.Y, gatePos.Z), toCenter, 44, TIMBER, theme.roof)
 	BuildKit.billboard(sign, `{spec.name}\n{spec.subtitle}`, spec.accent, 18, 3, Vector3.new(0, 4, 0))
 
-	-- Pagoda homes on two rings so the plaza reads as a lived-in city.
-	local rings = {
-		{ fraction = 0.44, count = 7, width = 40, depth = 32, stagger = 0.45 },
-		{ fraction = 0.72, count = 11, width = 44, depth = 34, stagger = 0 },
+	-- Organic village scatter, in the reference's manner: a seeded mix of
+	-- building styles dropped with collision checks, keeping the gate
+	-- avenue, the dais, and the sect hall's ground clear. Each city has a
+	-- personality: orderly (snapped to the compass) or loose.
+	local personality = PERSONALITIES[spec.key]
+	local rng = Random.new(personality.seed)
+	local sectHallPos = center + (-toCenter) * radius * 0.52
+	local shrineFocus = center + (-toCenter) * radius * 0.22
+
+	type Placed = { x: number, z: number, r: number }
+	local placed: { Placed } = {}
+
+	local function tryPlace(buildingW: number, buildingD: number, build: (CFrame) -> ())
+		local footprint = math.max(buildingW, buildingD) / 2 + 10
+		for _ = 1, 24 do
+			local angle = rng:NextNumber(0, math.pi * 2)
+			local dist = rng:NextNumber(0.2, 0.82) * radius
+			local x = center.X + math.cos(angle) * dist
+			local z = center.Z + math.sin(angle) * dist
+			-- Keep the gate avenue open: reject spots near the center-gate line.
+			local toSpot = Vector3.new(x - center.X, 0, z - center.Z)
+			local along = toSpot:Dot(toCenter)
+			local lateral = (toSpot - toCenter * along).Magnitude
+			if along > 0 and lateral < 26 + footprint * 0.4 then
+				continue
+			end
+			if (Vector3.new(x, 0, z) - Vector3.new(sectHallPos.X, 0, sectHallPos.Z)).Magnitude < footprint + 42 then
+				continue
+			end
+			if (Vector3.new(x, 0, z) - Vector3.new(shrineFocus.X, 0, shrineFocus.Z)).Magnitude < footprint + 44 then
+				continue
+			end
+			local clear = true
+			for _, other in placed do
+				local dx = x - other.x
+				local dz = z - other.z
+				if math.sqrt(dx * dx + dz * dz) < footprint + other.r then
+					clear = false
+					break
+				end
+			end
+			if not clear then
+				continue
+			end
+			table.insert(placed, { x = x, z = z, r = footprint })
+			local yaw = if personality.snap
+				then rng:NextInteger(0, 3) * math.pi / 2
+				else rng:NextNumber(0, math.pi * 2)
+			build(CFrame.new(x, center.Y, z) * CFrame.Angles(0, yaw, 0))
+			return
+		end
+	end
+
+	local function roofFor(): (Color3, Enum.Material?)
+		if personality.mixThatch and rng:NextNumber() < 0.45 then
+			return Color3.fromRGB(185, 154, 74), Enum.Material.Grass
+		end
+		return theme.roof, theme.roofMaterial
+	end
+
+	local mix = {
+		{ count = 7, style = "house", floors = 2, w = 38, d = 30 },
+		{ count = 6, style = "house", floors = 1, w = 34, d = 26 },
+		{ count = 6, style = "hut", floors = 1, w = 20, d = 16 },
+		{ count = 2, style = "hall", floors = 1, w = 62, d = 30 },
+		{ count = 1, style = "tower", floors = 3, w = 24, d = 24 },
 	}
-	for _, ring in rings do
-		for index = 1, ring.count do
-			local angle = index / ring.count * math.pi * 2 + ring.stagger
-			local gateDelta = math.atan2(math.sin(angle - gateAngle), math.cos(angle - gateAngle))
-			if math.abs(gateDelta) < math.rad(26) then
-				continue -- keep the gate avenue open
-			end
-			if ring.fraction < 0.6 and math.abs(gateDelta) > math.rad(150) then
-				continue -- the sect hall and shrine own the back of the inner ring
-			end
-			local homeCenter = center + Vector3.new(math.cos(angle) * radius * ring.fraction, 0, math.sin(angle) * radius * ring.fraction)
-			BuildKit.pagodaHouse(city, homeCenter, ring.width, ring.depth, 2, theme.plaster, TIMBER, theme.roof, theme.roofMaterial)
+	for _, entry in mix do
+		for _ = 1, entry.count do
+			tryPlace(entry.w, entry.d, function(cf)
+				local roofColor, roofMaterial = roofFor()
+				BuildKit.house(city, cf, {
+					width = entry.w,
+					depth = entry.d,
+					floors = entry.floors,
+					plaster = theme.plaster,
+					timber = TIMBER,
+					roofColor = roofColor,
+					roofMaterial = roofMaterial,
+					style = entry.style,
+				})
+				-- The odd attached wing makes an L-shaped compound.
+				if entry.style == "house" and entry.floors == 2 and rng:NextNumber() < 0.35 then
+					BuildKit.house(city, cf * CFrame.new(entry.w / 2 + 12, 0, 4), {
+						width = 22,
+						depth = 16,
+						floors = 1,
+						plaster = theme.plaster,
+						timber = TIMBER,
+						roofColor = roofColor,
+						roofMaterial = roofMaterial,
+						style = "hut",
+					})
+				end
+			end)
 		end
 	end
 

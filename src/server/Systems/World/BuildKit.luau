@@ -125,86 +125,137 @@ function BuildKit.wedgePart(props: PartProps): WedgePart
 	return wedge
 end
 
--- A Chinese tiled roof layer: flat cap plus four outward-sloping eave
--- wedges hanging past the walls. `y` is the underside of the roof.
-function BuildKit.chineseRoof(parent: Instance, center: Vector3, width: number, depth: number, y: number, roofColor: Color3, roofMaterial: Enum.Material?)
+-- A Chinese tiled roof relative to a yaw CFrame: cap, four sloping eaves,
+-- a ridge beam, and ornamental gable tips at the ridge ends.
+function BuildKit.roofCF(parent: Instance, cf: CFrame, width: number, depth: number, y: number, roofColor: Color3, roofMaterial: Enum.Material?)
 	local material = roofMaterial or Enum.Material.Slate
 	local overhang = 6
 	local capW = width + overhang * 2
 	local capD = depth + overhang * 2
+	local function at(offset: Vector3): CFrame
+		return cf * CFrame.new(offset)
+	end
 	BuildKit.part({
 		name = "Roof_Cap",
 		size = Vector3.new(capW, 2.2, capD),
-		position = Vector3.new(center.X, y + 0.5, center.Z),
+		cframe = at(Vector3.new(0, y + 1.1, 0)),
 		color = roofColor,
 		material = material,
 		parent = parent,
 	})
-	-- Eaves on each side, sloping down and out.
-	local eaveH = 2.6
-	local sides = {
-		{ dir = Vector3.new(0, 0, 1), len = capW },
-		{ dir = Vector3.new(0, 0, -1), len = capW },
-		{ dir = Vector3.new(1, 0, 0), len = capD },
-		{ dir = Vector3.new(-1, 0, 0), len = capD },
-	}
-	for _, side in sides do
-		local edge = Vector3.new(center.X, y + 0.4, center.Z)
-			+ side.dir * (if side.dir.Z ~= 0 then capD / 2 + 2.2 else capW / 2 + 2.2)
+	local sides = { Vector3.new(0, 0, 1), Vector3.new(0, 0, -1), Vector3.new(1, 0, 0), Vector3.new(-1, 0, 0) }
+	for _, dir in sides do
+		local len = if dir.Z ~= 0 then capW else capD
+		local off = if dir.Z ~= 0 then capD / 2 + 2.2 else capW / 2 + 2.2
+		local edge = at(dir * off + Vector3.new(0, y + 0.9, 0))
+		local outward = at(dir * (off + 6) + Vector3.new(0, y + 0.9, 0))
 		BuildKit.wedgePart({
 			name = "Roof_Eave",
-			size = Vector3.new(side.len + 2, eaveH, 5),
-			cframe = CFrame.lookAt(edge, edge + side.dir) * CFrame.Angles(0, math.pi, 0),
+			size = Vector3.new(len + 2, 2.6, 5),
+			cframe = CFrame.lookAt(edge.Position, outward.Position) * CFrame.Angles(0, math.pi, 0),
 			color = roofColor,
 			material = material,
 			canCollide = false,
 			parent = parent,
 		})
 	end
-	-- Ridge beam along the longer axis.
-	local ridgeAlongX = width >= depth
+	local alongX = width >= depth
+	local ridgeLen = (if alongX then width else depth) * 0.72
 	BuildKit.part({
 		name = "Roof_Ridge",
-		size = if ridgeAlongX then Vector3.new(width * 0.7, 1, 1.6) else Vector3.new(1.6, 1, depth * 0.7),
-		position = Vector3.new(center.X, y + 1.4, center.Z),
+		size = if alongX then Vector3.new(ridgeLen, 1.6, 2) else Vector3.new(2, 1.6, ridgeLen),
+		cframe = at(Vector3.new(0, y + 2.6, 0)),
 		color = roofColor,
 		material = material,
 		parent = parent,
 	})
+	-- Upturned corner tips, the signature silhouette.
+	for cornerX = -1, 1, 2 do
+		for cornerZ = -1, 1, 2 do
+			BuildKit.wedgePart({
+				name = "Roof_CornerUpturn",
+				size = Vector3.new(3.4, 2.2, 4),
+				cframe = at(Vector3.new(cornerX * (capW / 2 + 1.6), y + 1.6, cornerZ * (capD / 2 + 1.6)))
+					* CFrame.Angles(0, math.atan2(cornerX :: number, cornerZ :: number), 0) * CFrame.Angles(math.rad(-28), 0, 0),
+				color = roofColor,
+				material = material,
+				canCollide = false,
+				parent = parent,
+			})
+		end
+	end
+	for tipSign = -1, 1, 2 do
+		local tip = if alongX then Vector3.new(tipSign * ridgeLen / 2, y + 3.5, 0) else Vector3.new(0, y + 3.5, tipSign * ridgeLen / 2)
+		BuildKit.part({
+			name = "Roof_GableTip",
+			size = Vector3.new(2.4, 2.4, 2.4),
+			cframe = at(tip) * CFrame.Angles(math.rad(45), 0, math.rad(45)),
+			color = roofColor,
+			material = material,
+			canCollide = false,
+			parent = parent,
+		})
+	end
 end
 
--- A multi-story pagoda-style house: plaster walls, timber corner posts,
--- a tiled roof over every floor, each floor slightly narrower.
-function BuildKit.pagodaHouse(parent: Instance, center: Vector3, width: number, depth: number, floors: number, plaster: Color3, timber: Color3, roofColor: Color3, roofMaterial: Enum.Material?)
-	local floorHeight = 14
-	local y = center.Y
-	local w, d = width, depth
+-- Back-compat wrapper for axis-aligned callers (paifang, pavilion).
+function BuildKit.chineseRoof(parent: Instance, center: Vector3, width: number, depth: number, y: number, roofColor: Color3, roofMaterial: Enum.Material?)
+	BuildKit.roofCF(parent, CFrame.new(center.X, 0, center.Z), width, depth, y, roofColor, roofMaterial)
+end
 
-	-- Raised plank deck with front steps, like the reference houses.
+-- A detailed timber-frame building in the reference village's manner:
+-- stone plinth and steps, plaster walls gridded with dark beams and studs,
+-- shuttered windows under their own small awnings, a porched door, tiled
+-- (or thatched) roofs per floor, and a crate or barrel by the wall.
+-- Styles: "house" (default), "hall" (long, tall single story),
+-- "hut" (small), "tower" (narrow, stacked).
+export type HouseSpec = {
+	width: number,
+	depth: number,
+	floors: number,
+	plaster: Color3,
+	timber: Color3,
+	roofColor: Color3,
+	roofMaterial: Enum.Material?,
+	style: string?,
+}
+
+local STONE_PLINTH = Color3.fromRGB(148, 146, 142)
+
+function BuildKit.house(parent: Instance, cf: CFrame, spec: HouseSpec)
+	local style = spec.style or "house"
+	local floorHeight = if style == "hut" then 11 elseif style == "hall" then 17 else 14
+	local w, d = spec.width, spec.depth
+	local plaster, timber = spec.plaster, spec.timber
+	local function at(offset: Vector3): CFrame
+		return cf * CFrame.new(offset)
+	end
+
 	BuildKit.part({
-		name = "House_Deck",
-		size = Vector3.new(width + 8, 1.4, depth + 8),
-		position = Vector3.new(center.X, y + 0.7, center.Z),
-		color = Color3.fromRGB(110, 82, 55),
-		material = Enum.Material.WoodPlanks,
+		name = "House_Plinth",
+		size = Vector3.new(w + 6, 2.4, d + 6),
+		cframe = at(Vector3.new(0, 1.2, 0)),
+		color = STONE_PLINTH,
+		material = Enum.Material.Slate,
 		parent = parent,
 	})
 	for stepIndex = 1, 3 do
 		BuildKit.part({
 			name = "House_Step",
-			size = Vector3.new(8, 0.5, 1.6),
-			position = Vector3.new(center.X, y + 1.4 - stepIndex * 0.45, center.Z + depth / 2 + 4 + stepIndex * 1.5),
-			color = Color3.fromRGB(110, 82, 55),
-			material = Enum.Material.WoodPlanks,
+			size = Vector3.new(10, 0.7, 1.8),
+			cframe = at(Vector3.new(-w / 4, 2.4 - stepIndex * 0.7, d / 2 + 3 + stepIndex * 1.6)),
+			color = STONE_PLINTH,
+			material = Enum.Material.Slate,
 			parent = parent,
 		})
 	end
 
-	for floor = 1, floors do
+	local y = 2.4
+	for floor = 1, spec.floors do
 		BuildKit.part({
 			name = "House_Wall",
 			size = Vector3.new(w, floorHeight, d),
-			position = Vector3.new(center.X, y + floorHeight / 2, center.Z),
+			cframe = at(Vector3.new(0, y + floorHeight / 2, 0)),
 			color = plaster,
 			material = Enum.Material.SmoothPlastic,
 			parent = parent,
@@ -214,35 +265,49 @@ function BuildKit.pagodaHouse(parent: Instance, center: Vector3, width: number, 
 				BuildKit.part({
 					name = "House_Post",
 					size = Vector3.new(2, floorHeight, 2),
-					position = Vector3.new(center.X + cx * (w / 2), y + floorHeight / 2, center.Z + cz * (d / 2)),
+					cframe = at(Vector3.new(cx * (w / 2), y + floorHeight / 2, cz * (d / 2))),
 					color = timber,
 					material = Enum.Material.Wood,
 					parent = parent,
 				})
 			end
 		end
-		-- Dark timber bands framing the floor, top and bottom.
-		for _, bandY in { y + 0.7, y + floorHeight - 0.7 } do
+		-- Timber frame: bands top/bottom plus a mid beam.
+		for _, bandY in { y + 0.7, y + floorHeight * 0.55, y + floorHeight - 0.7 } do
 			BuildKit.part({
 				name = "House_Band",
-				size = Vector3.new(w + 1.2, 1.3, d + 1.2),
-				position = Vector3.new(center.X, bandY, center.Z),
+				size = Vector3.new(w + 1.2, if bandY == y + floorHeight * 0.55 then 0.9 else 1.3, d + 1.2),
+				cframe = at(Vector3.new(0, bandY, 0)),
 				color = timber,
 				material = Enum.Material.Wood,
 				parent = parent,
 			})
 		end
-		-- Slatted windows on the front and back faces.
+		-- Vertical studs on the long faces.
+		for faceSign = -1, 1, 2 do
+			for _, studX in { -w / 6, w / 6 } do
+				BuildKit.part({
+					name = "House_Stud",
+					size = Vector3.new(1, floorHeight, 1),
+					cframe = at(Vector3.new(studX, y + floorHeight / 2, faceSign * (d / 2 + 0.12))),
+					color = timber,
+					material = Enum.Material.Wood,
+					canCollide = false,
+					parent = parent,
+				})
+			end
+		end
+		-- Windows with awnings; the door takes the front-left ground bay.
 		for faceSign = -1, 1, 2 do
 			for _, windowX in { -w / 4, w / 4 } do
-				if floor == 1 and faceSign == 1 and math.abs(windowX + w / 4) < 0.01 then
-					continue -- the door takes this bay
+				if style ~= "hall" and floor == 1 and faceSign == 1 and windowX < 0 then
+					continue
 				end
-				local faceZ = center.Z + faceSign * (d / 2 + 0.35)
+				local faceZ = faceSign * (d / 2 + 0.35)
 				BuildKit.part({
 					name = "House_WindowFrame",
 					size = Vector3.new(5, 6, 0.7),
-					position = Vector3.new(center.X + windowX, y + floorHeight / 2, faceZ),
+					cframe = at(Vector3.new(windowX, y + floorHeight / 2, faceZ)),
 					color = timber,
 					material = Enum.Material.Wood,
 					canCollide = false,
@@ -251,20 +316,30 @@ function BuildKit.pagodaHouse(parent: Instance, center: Vector3, width: number, 
 				BuildKit.part({
 					name = "House_WindowPanel",
 					size = Vector3.new(3.8, 4.8, 0.5),
-					position = Vector3.new(center.X + windowX, y + floorHeight / 2, faceZ + faceSign * 0.15),
+					cframe = at(Vector3.new(windowX, y + floorHeight / 2, faceZ + faceSign * 0.15)),
 					color = Color3.fromRGB(216, 203, 170),
 					material = Enum.Material.WoodPlanks,
 					canCollide = false,
 					parent = parent,
 				})
+				BuildKit.part({
+					name = "House_Awning",
+					size = Vector3.new(6.6, 0.7, 2.6),
+					cframe = at(Vector3.new(windowX, y + floorHeight / 2 + 4, faceZ + faceSign * 1.2)) * CFrame.Angles(faceSign * math.rad(-12), 0, 0),
+					color = spec.roofColor,
+					material = spec.roofMaterial or Enum.Material.Slate,
+					canCollide = false,
+					parent = parent,
+				})
 			end
 		end
-		-- Ground-floor door on the front face.
 		if floor == 1 then
+			local doorX = if style == "hall" then 0 else -w / 4
+			local doorW = if style == "hall" then 10 else 6.5
 			BuildKit.part({
 				name = "House_DoorFrame",
-				size = Vector3.new(7.5, 10.5, 0.8),
-				position = Vector3.new(center.X - w / 4, y + 5.25 + 1.4, center.Z + d / 2 + 0.35),
+				size = Vector3.new(doorW + 1.5, 11, 0.8),
+				cframe = at(Vector3.new(doorX, y + 5.5, d / 2 + 0.35)),
 				color = timber,
 				material = Enum.Material.Wood,
 				canCollide = false,
@@ -272,28 +347,94 @@ function BuildKit.pagodaHouse(parent: Instance, center: Vector3, width: number, 
 			})
 			BuildKit.part({
 				name = "House_Door",
-				size = Vector3.new(6, 9.4, 0.6),
-				position = Vector3.new(center.X - w / 4, y + 4.7 + 1.4, center.Z + d / 2 + 0.5),
+				size = Vector3.new(doorW, 10, 0.6),
+				cframe = at(Vector3.new(doorX, y + 5, d / 2 + 0.5)),
 				color = Color3.fromRGB(66, 47, 33),
 				material = Enum.Material.WoodPlanks,
 				canCollide = false,
 				parent = parent,
 			})
+			-- Red couplet strips flanking the door, and hanging lanterns.
+			for coupletSign = -1, 1, 2 do
+				BuildKit.part({
+					name = "House_Couplet",
+					size = Vector3.new(1.6, 8.5, 0.3),
+					cframe = at(Vector3.new(doorX + coupletSign * (doorW / 2 + 1.8), y + 5.4, d / 2 + 0.45)),
+					color = Color3.fromRGB(178, 44, 38),
+					material = Enum.Material.SmoothPlastic,
+					canCollide = false,
+					parent = parent,
+				})
+				local lantern = BuildKit.part({
+					name = "House_Lantern",
+					size = Vector3.new(1.8, 2.3, 1.8),
+					cframe = at(Vector3.new(doorX + coupletSign * (doorW / 2 + 4.2), y + 9.6, d / 2 + 1.6)),
+					color = Color3.fromRGB(214, 58, 44),
+					material = Enum.Material.Neon,
+					canCollide = false,
+					parent = parent,
+				})
+				BuildKit.pointLight(lantern, Color3.fromRGB(255, 150, 100), 0.9, 14)
+			end
+			BuildKit.part({
+				name = "House_PorchRoof",
+				size = Vector3.new(doorW + 5, 0.9, 3.6),
+				cframe = at(Vector3.new(doorX, y + 11.6, d / 2 + 1.6)) * CFrame.Angles(math.rad(-10), 0, 0),
+				color = spec.roofColor,
+				material = spec.roofMaterial or Enum.Material.Slate,
+				canCollide = false,
+				parent = parent,
+			})
 		end
-		BuildKit.chineseRoof(parent, Vector3.new(center.X, 0, center.Z), w, d, y + floorHeight, roofColor, roofMaterial)
+		BuildKit.roofCF(parent, cf, w, d, y + floorHeight, spec.roofColor, spec.roofMaterial)
 		y += floorHeight + 2
-		w *= 0.78
-		d *= 0.78
+		if spec.floors > 1 then
+			local shrink = if style == "tower" then 0.85 else 0.8
+			w *= shrink
+			d *= shrink
+		end
 	end
-	-- Finial at the peak.
+
 	BuildKit.part({
 		name = "House_Finial",
-		size = Vector3.new(1.3, 3.6, 1.3),
-		position = Vector3.new(center.X, y + 1.2, center.Z),
+		size = Vector3.new(1.3, 3.2, 1.3),
+		cframe = at(Vector3.new(0, y + 1.4, 0)),
 		color = Color3.fromRGB(212, 175, 55),
 		material = Enum.Material.Metal,
 		canCollide = false,
 		parent = parent,
+	})
+
+	-- A crate and barrel against the wall; villages accumulate stuff.
+	BuildKit.part({
+		name = "House_Crate",
+		size = Vector3.new(3.2, 3.2, 3.2),
+		cframe = at(Vector3.new(spec.width / 2 + 4.5, 4, spec.depth / 4)) * CFrame.Angles(0, 0.4, 0),
+		color = Color3.fromRGB(124, 94, 62),
+		material = Enum.Material.WoodPlanks,
+		parent = parent,
+	})
+	BuildKit.part({
+		name = "House_Barrel",
+		size = Vector3.new(3.4, 2.7, 2.7),
+		cframe = at(Vector3.new(spec.width / 2 + 4.5, 4.1, spec.depth / 4 + 4)) * CFrame.Angles(0, 0, math.rad(90)),
+		color = Color3.fromRGB(104, 76, 50),
+		material = Enum.Material.Wood,
+		shape = Enum.PartType.Cylinder,
+		parent = parent,
+	})
+end
+
+-- Back-compat wrapper: axis-aligned multi-story pagoda.
+function BuildKit.pagodaHouse(parent: Instance, center: Vector3, width: number, depth: number, floors: number, plaster: Color3, timber: Color3, roofColor: Color3, roofMaterial: Enum.Material?)
+	BuildKit.house(parent, CFrame.new(center.X, center.Y, center.Z), {
+		width = width,
+		depth = depth,
+		floors = floors,
+		plaster = plaster,
+		timber = timber,
+		roofColor = roofColor,
+		roofMaterial = roofMaterial,
 	})
 end
 
