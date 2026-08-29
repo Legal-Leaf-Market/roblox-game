@@ -178,9 +178,15 @@ function QiSystem.Start()
 				regen *= realm.meditateMult
 			end
 
-			-- Qi Step pays its toll before regen is applied.
+			-- Qi Step pays its toll before regen is applied. A dead or
+			-- missing character ends it: without this, dying mid-step left
+			-- the flag set and drained qi invisibly forever.
 			if qiStepping[player] then
-				if data.qi <= Config.QISTEP_DRAIN then
+				local character = player.Character
+				local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
+				if humanoid == nil or humanoid.Health <= 0 then
+					setQiStep(player, false)
+				elseif data.qi <= Config.QISTEP_DRAIN then
 					setQiStep(player, false)
 					DataService.Notify(player, "Your qi runs thin; the light leaves your feet.")
 				else

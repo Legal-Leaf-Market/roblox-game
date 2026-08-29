@@ -522,7 +522,8 @@ local function castTechnique(player: Player, slotArg: unknown, aimArg: unknown)
 
 	if kind == "speed_buff" then
 		task.spawn(function()
-			humanoid.WalkSpeed += stats.speed
+			-- SpeedFlat is the whole contract: the client's movement
+			-- controller folds it into WalkSpeed on its next frame.
 			humanoid:SetAttribute("SpeedFlat", stats.speed)
 			task.wait(stats.duration)
 			CombatService.RefreshMods(player)

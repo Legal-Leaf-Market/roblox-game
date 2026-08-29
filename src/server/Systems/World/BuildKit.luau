@@ -17,6 +17,7 @@ export type PartProps = {
 	material: Enum.Material?,
 	transparency: number?,
 	canCollide: boolean?,
+	castShadow: boolean?,
 	shape: Enum.PartType?,
 	parent: Instance,
 }
@@ -33,7 +34,18 @@ function BuildKit.part(props: PartProps): Part
 	part.Color = props.color or Color3.fromRGB(163, 162, 165)
 	part.Material = props.material or Enum.Material.SmoothPlastic
 	part.Transparency = props.transparency or 0
-	part.CanCollide = if props.canCollide == nil then true else props.canCollide
+	local canCollide = if props.canCollide == nil then true else props.canCollide
+	part.CanCollide = canCollide
+	-- Decoration must not eat raycasts or spatial queries: a projectile
+	-- should fly through an awning, and GetPartBounds should never pay for
+	-- foliage. Anything that does not collide also does not answer queries.
+	if not canCollide then
+		part.CanQuery = false
+		part.CanTouch = false
+	end
+	if props.castShadow == false then
+		part.CastShadow = false
+	end
 	if props.shape then
 		part.Shape = props.shape
 	end
@@ -117,7 +129,15 @@ function BuildKit.wedgePart(props: PartProps): WedgePart
 	wedge.Color = props.color or Color3.fromRGB(163, 162, 165)
 	wedge.Material = props.material or Enum.Material.SmoothPlastic
 	wedge.Transparency = props.transparency or 0
-	wedge.CanCollide = if props.canCollide == nil then true else props.canCollide
+	local canCollide = if props.canCollide == nil then true else props.canCollide
+	wedge.CanCollide = canCollide
+	if not canCollide then
+		wedge.CanQuery = false
+		wedge.CanTouch = false
+	end
+	if props.castShadow == false then
+		wedge.CastShadow = false
+	end
 	wedge.Anchored = true
 	wedge.TopSurface = Enum.SurfaceType.Smooth
 	wedge.BottomSurface = Enum.SurfaceType.Smooth
@@ -180,6 +200,7 @@ function BuildKit.roofCF(parent: Instance, cf: CFrame, width: number, depth: num
 				color = roofColor,
 				material = material,
 				canCollide = false,
+				castShadow = false,
 				parent = parent,
 			})
 		end
@@ -193,6 +214,7 @@ function BuildKit.roofCF(parent: Instance, cf: CFrame, width: number, depth: num
 			color = roofColor,
 			material = material,
 			canCollide = false,
+			castShadow = false,
 			parent = parent,
 		})
 	end
@@ -218,6 +240,7 @@ export type HouseSpec = {
 	roofColor: Color3,
 	roofMaterial: Enum.Material?,
 	style: string?,
+	lanternLights: boolean?, -- PointLights on the door lanterns (budget: halls/towers only)
 }
 
 local STONE_PLINTH = Color3.fromRGB(148, 146, 142)
@@ -226,10 +249,22 @@ function BuildKit.house(parent: Instance, cf: CFrame, spec: HouseSpec)
 	local style = spec.style or "house"
 	local floorHeight = if style == "hut" then 11 elseif style == "hall" then 17 else 14
 	local w, d = spec.width, spec.depth
-	local plaster, timber = spec.plaster, spec.timber
+	-- Deterministic per-house variation, seeded from where it stands: a
+	-- slight plaster tint, and a two- or three-bay window rhythm. Enough
+	-- that a street is not one facade stamped out, controlled enough that
+	-- the town keeps one architectural language.
+	local houseRng = Random.new(math.floor(cf.X * 7 + cf.Z * 13) % 100000)
+	local tint = houseRng:NextNumber(-0.05, 0.06)
+	local plaster = if tint >= 0 then spec.plaster:Lerp(Color3.new(1, 1, 1), tint) else spec.plaster:Lerp(Color3.fromRGB(96, 84, 66), -tint)
+	local timber = spec.timber
+	local threeBay = style ~= "hut" and w >= 40 and houseRng:NextNumber() < 0.5
 	local function at(offset: Vector3): CFrame
 		return cf * CFrame.new(offset)
 	end
+
+	local doorX = if style == "hall" then 0 else -w / 4
+	local doorW = if style == "hall" then 10 else 6.5
+	local hollow = style == "hall" -- halls are real rooms you can walk into
 
 	BuildKit.part({
 		name = "House_Plinth",
@@ -239,11 +274,12 @@ function BuildKit.house(parent: Instance, cf: CFrame, spec: HouseSpec)
 		material = Enum.Material.Slate,
 		parent = parent,
 	})
+	-- Steps climb to the door, wherever the door actually is.
 	for stepIndex = 1, 3 do
 		BuildKit.part({
 			name = "House_Step",
-			size = Vector3.new(10, 0.7, 1.8),
-			cframe = at(Vector3.new(-w / 4, 2.4 - stepIndex * 0.7, d / 2 + 3 + stepIndex * 1.6)),
+			size = Vector3.new(doorW + 4, 0.7, 1.8),
+			cframe = at(Vector3.new(doorX, 2.4 - stepIndex * 0.7, d / 2 + 3 + stepIndex * 1.6)),
 			color = STONE_PLINTH,
 			material = Enum.Material.Slate,
 			parent = parent,
@@ -252,14 +288,65 @@ function BuildKit.house(parent: Instance, cf: CFrame, spec: HouseSpec)
 
 	local y = 2.4
 	for floor = 1, spec.floors do
-		BuildKit.part({
-			name = "House_Wall",
-			size = Vector3.new(w, floorHeight, d),
-			cframe = at(Vector3.new(0, y + floorHeight / 2, 0)),
-			color = plaster,
-			material = Enum.Material.SmoothPlastic,
-			parent = parent,
-		})
+		if hollow and floor == 1 then
+			-- Four real walls with a doorway gap, and a floor: a hall is a
+			-- building, not a painted box.
+			local wallT = 1.6
+			BuildKit.part({ -- back
+				name = "House_Wall",
+				size = Vector3.new(w, floorHeight, wallT),
+				cframe = at(Vector3.new(0, y + floorHeight / 2, -d / 2 + wallT / 2)),
+				color = plaster,
+				material = Enum.Material.SmoothPlastic,
+				parent = parent,
+			})
+			for sideSign = -1, 1, 2 do
+				BuildKit.part({ -- flanks
+					name = "House_Wall",
+					size = Vector3.new(wallT, floorHeight, d - wallT * 2),
+					cframe = at(Vector3.new(sideSign * (w / 2 - wallT / 2), y + floorHeight / 2, 0)),
+					color = plaster,
+					material = Enum.Material.SmoothPlastic,
+					parent = parent,
+				})
+			end
+			for doorSide = -1, 1, 2 do -- front, split around the doorway
+				local segW = (w - doorW - 2) / 2
+				BuildKit.part({
+					name = "House_Wall",
+					size = Vector3.new(segW, floorHeight, wallT),
+					cframe = at(Vector3.new(doorSide * (doorW / 2 + 1 + segW / 2), y + floorHeight / 2, d / 2 - wallT / 2)),
+					color = plaster,
+					material = Enum.Material.SmoothPlastic,
+					parent = parent,
+				})
+			end
+			BuildKit.part({ -- lintel over the doorway
+				name = "House_Wall",
+				size = Vector3.new(doorW + 2, floorHeight - 11, wallT),
+				cframe = at(Vector3.new(0, y + 11 + (floorHeight - 11) / 2, d / 2 - wallT / 2)),
+				color = plaster,
+				material = Enum.Material.SmoothPlastic,
+				parent = parent,
+			})
+			BuildKit.part({ -- interior floor
+				name = "House_Floor",
+				size = Vector3.new(w - wallT, 0.4, d - wallT),
+				cframe = at(Vector3.new(0, y + 0.2, 0)),
+				color = Color3.fromRGB(124, 96, 66),
+				material = Enum.Material.WoodPlanks,
+				parent = parent,
+			})
+		else
+			BuildKit.part({
+				name = "House_Wall",
+				size = Vector3.new(w, floorHeight, d),
+				cframe = at(Vector3.new(0, y + floorHeight / 2, 0)),
+				color = plaster,
+				material = Enum.Material.SmoothPlastic,
+				parent = parent,
+			})
+		end
 		for cx = -1, 1, 2 do
 			for cz = -1, 1, 2 do
 				BuildKit.part({
@@ -293,15 +380,17 @@ function BuildKit.house(parent: Instance, cf: CFrame, spec: HouseSpec)
 					color = timber,
 					material = Enum.Material.Wood,
 					canCollide = false,
+					castShadow = false,
 					parent = parent,
 				})
 			end
 		end
 		-- Windows with awnings; the door takes the front-left ground bay.
+		local bays: { number } = if threeBay then { -w / 3, 0, w / 3 } else { -w / 4, w / 4 }
 		for faceSign = -1, 1, 2 do
-			for _, windowX in { -w / 4, w / 4 } do
-				if style ~= "hall" and floor == 1 and faceSign == 1 and windowX < 0 then
-					continue
+			for _, windowX in bays do
+				if floor == 1 and faceSign == 1 and math.abs(windowX - doorX) < (doorW + 5) / 2 + 3 then
+					continue -- the door owns this bay
 				end
 				local faceZ = faceSign * (d / 2 + 0.35)
 				BuildKit.part({
@@ -311,6 +400,7 @@ function BuildKit.house(parent: Instance, cf: CFrame, spec: HouseSpec)
 					color = timber,
 					material = Enum.Material.Wood,
 					canCollide = false,
+					castShadow = false,
 					parent = parent,
 				})
 				BuildKit.part({
@@ -320,6 +410,7 @@ function BuildKit.house(parent: Instance, cf: CFrame, spec: HouseSpec)
 					color = Color3.fromRGB(216, 203, 170),
 					material = Enum.Material.WoodPlanks,
 					canCollide = false,
+					castShadow = false,
 					parent = parent,
 				})
 				BuildKit.part({
@@ -329,13 +420,12 @@ function BuildKit.house(parent: Instance, cf: CFrame, spec: HouseSpec)
 					color = spec.roofColor,
 					material = spec.roofMaterial or Enum.Material.Slate,
 					canCollide = false,
+					castShadow = false,
 					parent = parent,
 				})
 			end
 		end
 		if floor == 1 then
-			local doorX = if style == "hall" then 0 else -w / 4
-			local doorW = if style == "hall" then 10 else 6.5
 			BuildKit.part({
 				name = "House_DoorFrame",
 				size = Vector3.new(doorW + 1.5, 11, 0.8),
@@ -343,18 +433,24 @@ function BuildKit.house(parent: Instance, cf: CFrame, spec: HouseSpec)
 				color = timber,
 				material = Enum.Material.Wood,
 				canCollide = false,
+				castShadow = false,
 				parent = parent,
 			})
-			BuildKit.part({
-				name = "House_Door",
-				size = Vector3.new(doorW, 10, 0.6),
-				cframe = at(Vector3.new(doorX, y + 5, d / 2 + 0.5)),
-				color = Color3.fromRGB(66, 47, 33),
-				material = Enum.Material.WoodPlanks,
-				canCollide = false,
-				parent = parent,
-			})
+			if not hollow then
+				BuildKit.part({
+					name = "House_Door",
+					size = Vector3.new(doorW, 10, 0.6),
+					cframe = at(Vector3.new(doorX, y + 5, d / 2 + 0.5)),
+					color = Color3.fromRGB(66, 47, 33),
+					material = Enum.Material.WoodPlanks,
+					canCollide = false,
+					castShadow = false,
+					parent = parent,
+				})
+			end
 			-- Red couplet strips flanking the door, and hanging lanterns.
+			-- Ordinary houses glow with Neon alone; only important
+			-- buildings spend a real PointLight (the light budget, §perf).
 			for coupletSign = -1, 1, 2 do
 				BuildKit.part({
 					name = "House_Couplet",
@@ -363,6 +459,7 @@ function BuildKit.house(parent: Instance, cf: CFrame, spec: HouseSpec)
 					color = Color3.fromRGB(178, 44, 38),
 					material = Enum.Material.SmoothPlastic,
 					canCollide = false,
+					castShadow = false,
 					parent = parent,
 				})
 				local lantern = BuildKit.part({
@@ -372,9 +469,12 @@ function BuildKit.house(parent: Instance, cf: CFrame, spec: HouseSpec)
 					color = Color3.fromRGB(214, 58, 44),
 					material = Enum.Material.Neon,
 					canCollide = false,
+					castShadow = false,
 					parent = parent,
 				})
-				BuildKit.pointLight(lantern, Color3.fromRGB(255, 150, 100), 0.9, 14)
+				if spec.lanternLights then
+					BuildKit.pointLight(lantern, Color3.fromRGB(255, 150, 100), 0.9, 14)
+				end
 			end
 			BuildKit.part({
 				name = "House_PorchRoof",
@@ -383,6 +483,7 @@ function BuildKit.house(parent: Instance, cf: CFrame, spec: HouseSpec)
 				color = spec.roofColor,
 				material = spec.roofMaterial or Enum.Material.Slate,
 				canCollide = false,
+				castShadow = false,
 				parent = parent,
 			})
 		end
@@ -402,8 +503,72 @@ function BuildKit.house(parent: Instance, cf: CFrame, spec: HouseSpec)
 		color = Color3.fromRGB(212, 175, 55),
 		material = Enum.Material.Metal,
 		canCollide = false,
+		castShadow = false,
 		parent = parent,
 	})
+
+	-- A hall's room is furnished: dais and seat at the back, scroll shelves
+	-- on the flanks, mats and low tables on the floor, one warm lantern.
+	if hollow then
+		local floorY = 2.4 + 0.4
+		BuildKit.part({
+			name = "Hall_Dais",
+			size = Vector3.new(14, 1.2, 8),
+			cframe = at(Vector3.new(0, floorY + 0.6, -d / 2 + 6.5)),
+			color = STONE_PLINTH,
+			material = Enum.Material.Slate,
+			parent = parent,
+		})
+		BuildKit.part({
+			name = "Hall_Seat",
+			size = Vector3.new(5, 4.5, 3),
+			cframe = at(Vector3.new(0, floorY + 3.4, -d / 2 + 6)),
+			color = timber,
+			material = Enum.Material.Wood,
+			parent = parent,
+		})
+		for shelfSign = -1, 1, 2 do
+			BuildKit.part({
+				name = "Hall_ScrollShelf",
+				size = Vector3.new(2.2, 9, 12),
+				cframe = at(Vector3.new(shelfSign * (w / 2 - 3.4), floorY + 4.5, -d / 2 + 10)),
+				color = Color3.fromRGB(96, 72, 50),
+				material = Enum.Material.WoodPlanks,
+				parent = parent,
+			})
+		end
+		for matIndex = 0, 3 do
+			BuildKit.part({
+				name = "Hall_Mat",
+				size = Vector3.new(4, 0.25, 4),
+				cframe = at(Vector3.new(-6 + (matIndex % 2) * 12, floorY + 0.15, 2 + math.floor(matIndex / 2) * 7)),
+				color = Color3.fromRGB(178, 150, 100),
+				material = Enum.Material.Fabric,
+				canCollide = false,
+				castShadow = false,
+				parent = parent,
+			})
+		end
+		BuildKit.part({
+			name = "Hall_Table",
+			size = Vector3.new(8, 1.6, 3.4),
+			cframe = at(Vector3.new(0, floorY + 0.9, 2)),
+			color = timber,
+			material = Enum.Material.Wood,
+			parent = parent,
+		})
+		local hallLantern = BuildKit.part({
+			name = "Hall_Lantern",
+			size = Vector3.new(2, 2.6, 2),
+			cframe = at(Vector3.new(0, floorY + 12, 0)),
+			color = Color3.fromRGB(230, 170, 90),
+			material = Enum.Material.Neon,
+			canCollide = false,
+			castShadow = false,
+			parent = parent,
+		})
+		BuildKit.pointLight(hallLantern, Color3.fromRGB(255, 190, 120), 1.4, 30)
+	end
 
 	-- A crate and barrel against the wall; villages accumulate stuff.
 	BuildKit.part({
@@ -435,6 +600,7 @@ function BuildKit.pagodaHouse(parent: Instance, center: Vector3, width: number, 
 		timber = timber,
 		roofColor = roofColor,
 		roofMaterial = roofMaterial,
+		lanternLights = true, -- pagodas are landmarks; they earn their light
 	})
 end
 
@@ -470,9 +636,10 @@ function BuildKit.paifang(parent: Instance, center: Vector3, facing: Vector3, wi
 		material = Enum.Material.Wood,
 		parent = parent,
 	})
-	-- Little roof riding the top.
-	local roofCenter = center + Vector3.new(0, 0, 0)
-	BuildKit.chineseRoof(parent, roofCenter, width * 0.7, 6, pillarHeight + 4.6, roofColor)
+	-- Little roof riding the top. chineseRoof measures y from the world
+	-- origin, so the gate's own altitude must be added: without it a
+	-- paifang on the crater floor (y 44) wore its roof at its knees.
+	BuildKit.chineseRoof(parent, center, width * 0.7, 6, center.Y + pillarHeight + 4.6, roofColor)
 	return sign
 end
 
@@ -496,13 +663,15 @@ function BuildKit.pavilion(parent: Instance, center: Vector3, size: number, timb
 end
 
 -- Vertical-axis cylinder (Roblox cylinders lie along local X; we stand it up).
-function BuildKit.cylinder(parent: Instance, name: string, center: Vector3, height: number, diameter: number, color: Color3, material: Enum.Material): Part
+function BuildKit.cylinder(parent: Instance, name: string, center: Vector3, height: number, diameter: number, color: Color3, material: Enum.Material, canCollide: boolean?, castShadow: boolean?): Part
 	return BuildKit.part({
 		name = name,
 		size = Vector3.new(height, diameter, diameter),
 		cframe = CFrame.new(center) * CFrame.Angles(0, 0, math.rad(90)),
 		color = color,
 		material = material,
+		canCollide = canCollide,
+		castShadow = castShadow,
 		shape = Enum.PartType.Cylinder,
 		parent = parent,
 	})
@@ -653,6 +822,7 @@ function BuildKit.oreNode(parent: Instance, position: Vector3, oreId: string, or
 			color = color,
 			material = Enum.Material.Neon,
 			canCollide = false,
+			castShadow = false,
 			parent = model,
 		})
 	end

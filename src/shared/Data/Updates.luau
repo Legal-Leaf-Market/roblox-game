@@ -13,6 +13,20 @@ export type UpdateEntry = {
 
 local Updates: { UpdateEntry } = {
 	{
+		version = "0.5.0",
+		date = "2026-08-29",
+		title = "The Great Polish",
+		notes = {
+			"Sect compounds: every city's pagoda now sits in a walled forecourt with banners, stone lanterns, training mats and dummies.",
+			"Halls are real buildings: walk in through the door to a dais, scroll shelves, mats and lantern light.",
+			"Street life: market stalls with cloth awnings, a roofed town well, notice boards, benches. Guardian lions now face arriving travelers.",
+			"Four sacred meditation sites: the Listening Deck under the falls, the Whispering Grove, the Elder Blossom, and the Summit itself.",
+			"Old stories in stone: a ruined stair, a toppled statue, an abandoned shrine, a boulder cut clean through by one sword stroke.",
+			"Techniques now fly through leaves and awnings instead of dying on them. Tree crowns no longer block your jumps.",
+			"The grand stair is smooth underfoot. Trees keep out of roads and houses. Big performance pass on lights and shadows.",
+		},
+	},
+	{
 		version = "0.4.2",
 		date = "2026-08-29",
 		title = "Mountains Worthy of the Name",

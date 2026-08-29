@@ -65,11 +65,11 @@ function CombatService.RefreshMods(player: Player)
 	humanoid.MaxHealth = maxHealth
 	humanoid.Health = math.min(maxHealth, maxHealth * healthFrac)
 
+	-- The client's movement controller owns humanoid.WalkSpeed and computes
+	-- it each frame as (BaseWalkSpeed + SpeedFlat) * SpeedFactor * sprint.
+	-- The server speaks ONLY through these attributes; writing WalkSpeed
+	-- here would fight the client's per-frame write and win for one frame.
 	local walkSpeed = Config.BASE_WALKSPEED + mods.walkSpeedBonus
-	humanoid.WalkSpeed = walkSpeed
-	-- The client's movement controller computes final speed each frame as
-	-- (BaseWalkSpeed + SpeedFlat) * SpeedFactor * sprint. Temporary combat
-	-- effects write the two modifier attributes; RefreshMods resets them.
 	humanoid:SetAttribute("BaseWalkSpeed", walkSpeed)
 	humanoid:SetAttribute("SpeedFactor", 1)
 	humanoid:SetAttribute("SpeedFlat", 0)

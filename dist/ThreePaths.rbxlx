@@ -1510,6 +1510,20 @@ export type UpdateEntry = {
 
 local Updates: { UpdateEntry } = {
 	{
+		version = "0.5.0",
+		date = "2026-08-29",
+		title = "The Great Polish",
+		notes = {
+			"Sect compounds: every city's pagoda now sits in a walled forecourt with banners, stone lanterns, training mats and dummies.",
+			"Halls are real buildings: walk in through the door to a dais, scroll shelves, mats and lantern light.",
+			"Street life: market stalls with cloth awnings, a roofed town well, notice boards, benches. Guardian lions now face arriving travelers.",
+			"Four sacred meditation sites: the Listening Deck under the falls, the Whispering Grove, the Elder Blossom, and the Summit itself.",
+			"Old stories in stone: a ruined stair, a toppled statue, an abandoned shrine, a boulder cut clean through by one sword stroke.",
+			"Techniques now fly through leaves and awnings instead of dying on them. Tree crowns no longer block your jumps.",
+			"The grand stair is smooth underfoot. Trees keep out of roads and houses. Big performance pass on lights and shadows.",
+		},
+	},
+	{
 		version = "0.4.2",
 		date = "2026-08-29",
 		title = "Mountains Worthy of the Name",
@@ -2288,11 +2302,11 @@ function CombatService.RefreshMods(player: Player)
 	humanoid.MaxHealth = maxHealth
 	humanoid.Health = math.min(maxHealth, maxHealth * healthFrac)
 
+	-- The client's movement controller owns humanoid.WalkSpeed and computes
+	-- it each frame as (BaseWalkSpeed + SpeedFlat) * SpeedFactor * sprint.
+	-- The server speaks ONLY through these attributes; writing WalkSpeed
+	-- here would fight the client's per-frame write and win for one frame.
 	local walkSpeed = Config.BASE_WALKSPEED + mods.walkSpeedBonus
-	humanoid.WalkSpeed = walkSpeed
-	-- The client's movement controller computes final speed each frame as
-	-- (BaseWalkSpeed + SpeedFlat) * SpeedFactor * sprint. Temporary combat
-	-- effects write the two modifier attributes; RefreshMods resets them.
 	humanoid:SetAttribute("BaseWalkSpeed", walkSpeed)
 	humanoid:SetAttribute("SpeedFactor", 1)
 	humanoid:SetAttribute("SpeedFlat", 0)
@@ -2640,12 +2654,16 @@ local function applyMail(userId: number, data: Types.PlayerData)
 	local mail: Mail? = nil
 	local dataStore = getMailStore()
 	if dataStore then
+		-- Claim atomically: one UpdateAsync reads the mail and leaves an
+		-- empty box behind, so two servers loading this master at once
+		-- cannot both apply (or lose) the same credit.
 		local ok, result = pcall(function()
-			local value = dataStore:GetAsync(KEY_PREFIX .. userId)
-			if value ~= nil then
-				dataStore:RemoveAsync(KEY_PREFIX .. userId)
-			end
-			return value
+			local claimed: unknown = nil
+			dataStore:UpdateAsync(KEY_PREFIX .. userId, function(existing)
+				claimed = existing
+				return { bonus = 0, removals = {} }
+			end)
+			return claimed
 		end)
 		if ok and typeof(result) == "table" then
 			mail = result :: Mail
@@ -3852,9 +3870,15 @@ function QiSystem.Start()
 				regen *= realm.meditateMult
 			end
 
-			-- Qi Step pays its toll before regen is applied.
+			-- Qi Step pays its toll before regen is applied. A dead or
+			-- missing character ends it: without this, dying mid-step left
+			-- the flag set and drained qi invisibly forever.
 			if qiStepping[player] then
-				if data.qi <= Config.QISTEP_DRAIN then
+				local character = player.Character
+				local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
+				if humanoid == nil or humanoid.Health <= 0 then
+					setQiStep(player, false)
+				elseif data.qi <= Config.QISTEP_DRAIN then
 					setQiStep(player, false)
 					DataService.Notify(player, "Your qi runs thin; the light leaves your feet.")
 				else
@@ -5123,7 +5147,8 @@ local function castTechnique(player: Player, slotArg: unknown, aimArg: unknown)
 
 	if kind == "speed_buff" then
 		task.spawn(function()
-			humanoid.WalkSpeed += stats.speed
+			-- SpeedFlat is the whole contract: the client's movement
+			-- controller folds it into WalkSpeed on its next frame.
 			humanoid:SetAttribute("SpeedFlat", stats.speed)
 			task.wait(stats.duration)
 			CombatService.RefreshMods(player)
@@ -5210,6 +5235,7 @@ export type PartProps = {
 	material: Enum.Material?,
 	transparency: number?,
 	canCollide: boolean?,
+	castShadow: boolean?,
 	shape: Enum.PartType?,
 	parent: Instance,
 }
@@ -5226,7 +5252,18 @@ function BuildKit.part(props: PartProps): Part
 	part.Color = props.color or Color3.fromRGB(163, 162, 165)
 	part.Material = props.material or Enum.Material.SmoothPlastic
 	part.Transparency = props.transparency or 0
-	part.CanCollide = if props.canCollide == nil then true else props.canCollide
+	local canCollide = if props.canCollide == nil then true else props.canCollide
+	part.CanCollide = canCollide
+	-- Decoration must not eat raycasts or spatial queries: a projectile
+	-- should fly through an awning, and GetPartBounds should never pay for
+	-- foliage. Anything that does not collide also does not answer queries.
+	if not canCollide then
+		part.CanQuery = false
+		part.CanTouch = false
+	end
+	if props.castShadow == false then
+		part.CastShadow = false
+	end
 	if props.shape then
 		part.Shape = props.shape
 	end
@@ -5310,7 +5347,15 @@ function BuildKit.wedgePart(props: PartProps): WedgePart
 	wedge.Color = props.color or Color3.fromRGB(163, 162, 165)
 	wedge.Material = props.material or Enum.Material.SmoothPlastic
 	wedge.Transparency = props.transparency or 0
-	wedge.CanCollide = if props.canCollide == nil then true else props.canCollide
+	local canCollide = if props.canCollide == nil then true else props.canCollide
+	wedge.CanCollide = canCollide
+	if not canCollide then
+		wedge.CanQuery = false
+		wedge.CanTouch = false
+	end
+	if props.castShadow == false then
+		wedge.CastShadow = false
+	end
 	wedge.Anchored = true
 	wedge.TopSurface = Enum.SurfaceType.Smooth
 	wedge.BottomSurface = Enum.SurfaceType.Smooth
@@ -5373,6 +5418,7 @@ function BuildKit.roofCF(parent: Instance, cf: CFrame, width: number, depth: num
 				color = roofColor,
 				material = material,
 				canCollide = false,
+				castShadow = false,
 				parent = parent,
 			})
 		end
@@ -5386,6 +5432,7 @@ function BuildKit.roofCF(parent: Instance, cf: CFrame, width: number, depth: num
 			color = roofColor,
 			material = material,
 			canCollide = false,
+			castShadow = false,
 			parent = parent,
 		})
 	end
@@ -5411,6 +5458,7 @@ export type HouseSpec = {
 	roofColor: Color3,
 	roofMaterial: Enum.Material?,
 	style: string?,
+	lanternLights: boolean?, -- PointLights on the door lanterns (budget: halls/towers only)
 }
 
 local STONE_PLINTH = Color3.fromRGB(148, 146, 142)
@@ -5419,10 +5467,22 @@ function BuildKit.house(parent: Instance, cf: CFrame, spec: HouseSpec)
 	local style = spec.style or "house"
 	local floorHeight = if style == "hut" then 11 elseif style == "hall" then 17 else 14
 	local w, d = spec.width, spec.depth
-	local plaster, timber = spec.plaster, spec.timber
+	-- Deterministic per-house variation, seeded from where it stands: a
+	-- slight plaster tint, and a two- or three-bay window rhythm. Enough
+	-- that a street is not one facade stamped out, controlled enough that
+	-- the town keeps one architectural language.
+	local houseRng = Random.new(math.floor(cf.X * 7 + cf.Z * 13) % 100000)
+	local tint = houseRng:NextNumber(-0.05, 0.06)
+	local plaster = if tint >= 0 then spec.plaster:Lerp(Color3.new(1, 1, 1), tint) else spec.plaster:Lerp(Color3.fromRGB(96, 84, 66), -tint)
+	local timber = spec.timber
+	local threeBay = style ~= "hut" and w >= 40 and houseRng:NextNumber() < 0.5
 	local function at(offset: Vector3): CFrame
 		return cf * CFrame.new(offset)
 	end
+
+	local doorX = if style == "hall" then 0 else -w / 4
+	local doorW = if style == "hall" then 10 else 6.5
+	local hollow = style == "hall" -- halls are real rooms you can walk into
 
 	BuildKit.part({
 		name = "House_Plinth",
@@ -5432,11 +5492,12 @@ function BuildKit.house(parent: Instance, cf: CFrame, spec: HouseSpec)
 		material = Enum.Material.Slate,
 		parent = parent,
 	})
+	-- Steps climb to the door, wherever the door actually is.
 	for stepIndex = 1, 3 do
 		BuildKit.part({
 			name = "House_Step",
-			size = Vector3.new(10, 0.7, 1.8),
-			cframe = at(Vector3.new(-w / 4, 2.4 - stepIndex * 0.7, d / 2 + 3 + stepIndex * 1.6)),
+			size = Vector3.new(doorW + 4, 0.7, 1.8),
+			cframe = at(Vector3.new(doorX, 2.4 - stepIndex * 0.7, d / 2 + 3 + stepIndex * 1.6)),
 			color = STONE_PLINTH,
 			material = Enum.Material.Slate,
 			parent = parent,
@@ -5445,14 +5506,65 @@ function BuildKit.house(parent: Instance, cf: CFrame, spec: HouseSpec)
 
 	local y = 2.4
 	for floor = 1, spec.floors do
-		BuildKit.part({
-			name = "House_Wall",
-			size = Vector3.new(w, floorHeight, d),
-			cframe = at(Vector3.new(0, y + floorHeight / 2, 0)),
-			color = plaster,
-			material = Enum.Material.SmoothPlastic,
-			parent = parent,
-		})
+		if hollow and floor == 1 then
+			-- Four real walls with a doorway gap, and a floor: a hall is a
+			-- building, not a painted box.
+			local wallT = 1.6
+			BuildKit.part({ -- back
+				name = "House_Wall",
+				size = Vector3.new(w, floorHeight, wallT),
+				cframe = at(Vector3.new(0, y + floorHeight / 2, -d / 2 + wallT / 2)),
+				color = plaster,
+				material = Enum.Material.SmoothPlastic,
+				parent = parent,
+			})
+			for sideSign = -1, 1, 2 do
+				BuildKit.part({ -- flanks
+					name = "House_Wall",
+					size = Vector3.new(wallT, floorHeight, d - wallT * 2),
+					cframe = at(Vector3.new(sideSign * (w / 2 - wallT / 2), y + floorHeight / 2, 0)),
+					color = plaster,
+					material = Enum.Material.SmoothPlastic,
+					parent = parent,
+				})
+			end
+			for doorSide = -1, 1, 2 do -- front, split around the doorway
+				local segW = (w - doorW - 2) / 2
+				BuildKit.part({
+					name = "House_Wall",
+					size = Vector3.new(segW, floorHeight, wallT),
+					cframe = at(Vector3.new(doorSide * (doorW / 2 + 1 + segW / 2), y + floorHeight / 2, d / 2 - wallT / 2)),
+					color = plaster,
+					material = Enum.Material.SmoothPlastic,
+					parent = parent,
+				})
+			end
+			BuildKit.part({ -- lintel over the doorway
+				name = "House_Wall",
+				size = Vector3.new(doorW + 2, floorHeight - 11, wallT),
+				cframe = at(Vector3.new(0, y + 11 + (floorHeight - 11) / 2, d / 2 - wallT / 2)),
+				color = plaster,
+				material = Enum.Material.SmoothPlastic,
+				parent = parent,
+			})
+			BuildKit.part({ -- interior floor
+				name = "House_Floor",
+				size = Vector3.new(w - wallT, 0.4, d - wallT),
+				cframe = at(Vector3.new(0, y + 0.2, 0)),
+				color = Color3.fromRGB(124, 96, 66),
+				material = Enum.Material.WoodPlanks,
+				parent = parent,
+			})
+		else
+			BuildKit.part({
+				name = "House_Wall",
+				size = Vector3.new(w, floorHeight, d),
+				cframe = at(Vector3.new(0, y + floorHeight / 2, 0)),
+				color = plaster,
+				material = Enum.Material.SmoothPlastic,
+				parent = parent,
+			})
+		end
 		for cx = -1, 1, 2 do
 			for cz = -1, 1, 2 do
 				BuildKit.part({
@@ -5486,15 +5598,17 @@ function BuildKit.house(parent: Instance, cf: CFrame, spec: HouseSpec)
 					color = timber,
 					material = Enum.Material.Wood,
 					canCollide = false,
+					castShadow = false,
 					parent = parent,
 				})
 			end
 		end
 		-- Windows with awnings; the door takes the front-left ground bay.
+		local bays: { number } = if threeBay then { -w / 3, 0, w / 3 } else { -w / 4, w / 4 }
 		for faceSign = -1, 1, 2 do
-			for _, windowX in { -w / 4, w / 4 } do
-				if style ~= "hall" and floor == 1 and faceSign == 1 and windowX < 0 then
-					continue
+			for _, windowX in bays do
+				if floor == 1 and faceSign == 1 and math.abs(windowX - doorX) < (doorW + 5) / 2 + 3 then
+					continue -- the door owns this bay
 				end
 				local faceZ = faceSign * (d / 2 + 0.35)
 				BuildKit.part({
@@ -5504,6 +5618,7 @@ function BuildKit.house(parent: Instance, cf: CFrame, spec: HouseSpec)
 					color = timber,
 					material = Enum.Material.Wood,
 					canCollide = false,
+					castShadow = false,
 					parent = parent,
 				})
 				BuildKit.part({
@@ -5513,6 +5628,7 @@ function BuildKit.house(parent: Instance, cf: CFrame, spec: HouseSpec)
 					color = Color3.fromRGB(216, 203, 170),
 					material = Enum.Material.WoodPlanks,
 					canCollide = false,
+					castShadow = false,
 					parent = parent,
 				})
 				BuildKit.part({
@@ -5522,13 +5638,12 @@ function BuildKit.house(parent: Instance, cf: CFrame, spec: HouseSpec)
 					color = spec.roofColor,
 					material = spec.roofMaterial or Enum.Material.Slate,
 					canCollide = false,
+					castShadow = false,
 					parent = parent,
 				})
 			end
 		end
 		if floor == 1 then
-			local doorX = if style == "hall" then 0 else -w / 4
-			local doorW = if style == "hall" then 10 else 6.5
 			BuildKit.part({
 				name = "House_DoorFrame",
 				size = Vector3.new(doorW + 1.5, 11, 0.8),
@@ -5536,18 +5651,24 @@ function BuildKit.house(parent: Instance, cf: CFrame, spec: HouseSpec)
 				color = timber,
 				material = Enum.Material.Wood,
 				canCollide = false,
+				castShadow = false,
 				parent = parent,
 			})
-			BuildKit.part({
-				name = "House_Door",
-				size = Vector3.new(doorW, 10, 0.6),
-				cframe = at(Vector3.new(doorX, y + 5, d / 2 + 0.5)),
-				color = Color3.fromRGB(66, 47, 33),
-				material = Enum.Material.WoodPlanks,
-				canCollide = false,
-				parent = parent,
-			})
+			if not hollow then
+				BuildKit.part({
+					name = "House_Door",
+					size = Vector3.new(doorW, 10, 0.6),
+					cframe = at(Vector3.new(doorX, y + 5, d / 2 + 0.5)),
+					color = Color3.fromRGB(66, 47, 33),
+					material = Enum.Material.WoodPlanks,
+					canCollide = false,
+					castShadow = false,
+					parent = parent,
+				})
+			end
 			-- Red couplet strips flanking the door, and hanging lanterns.
+			-- Ordinary houses glow with Neon alone; only important
+			-- buildings spend a real PointLight (the light budget, §perf).
 			for coupletSign = -1, 1, 2 do
 				BuildKit.part({
 					name = "House_Couplet",
@@ -5556,6 +5677,7 @@ function BuildKit.house(parent: Instance, cf: CFrame, spec: HouseSpec)
 					color = Color3.fromRGB(178, 44, 38),
 					material = Enum.Material.SmoothPlastic,
 					canCollide = false,
+					castShadow = false,
 					parent = parent,
 				})
 				local lantern = BuildKit.part({
@@ -5565,9 +5687,12 @@ function BuildKit.house(parent: Instance, cf: CFrame, spec: HouseSpec)
 					color = Color3.fromRGB(214, 58, 44),
 					material = Enum.Material.Neon,
 					canCollide = false,
+					castShadow = false,
 					parent = parent,
 				})
-				BuildKit.pointLight(lantern, Color3.fromRGB(255, 150, 100), 0.9, 14)
+				if spec.lanternLights then
+					BuildKit.pointLight(lantern, Color3.fromRGB(255, 150, 100), 0.9, 14)
+				end
 			end
 			BuildKit.part({
 				name = "House_PorchRoof",
@@ -5576,6 +5701,7 @@ function BuildKit.house(parent: Instance, cf: CFrame, spec: HouseSpec)
 				color = spec.roofColor,
 				material = spec.roofMaterial or Enum.Material.Slate,
 				canCollide = false,
+				castShadow = false,
 				parent = parent,
 			})
 		end
@@ -5595,8 +5721,72 @@ function BuildKit.house(parent: Instance, cf: CFrame, spec: HouseSpec)
 		color = Color3.fromRGB(212, 175, 55),
 		material = Enum.Material.Metal,
 		canCollide = false,
+		castShadow = false,
 		parent = parent,
 	})
+
+	-- A hall's room is furnished: dais and seat at the back, scroll shelves
+	-- on the flanks, mats and low tables on the floor, one warm lantern.
+	if hollow then
+		local floorY = 2.4 + 0.4
+		BuildKit.part({
+			name = "Hall_Dais",
+			size = Vector3.new(14, 1.2, 8),
+			cframe = at(Vector3.new(0, floorY + 0.6, -d / 2 + 6.5)),
+			color = STONE_PLINTH,
+			material = Enum.Material.Slate,
+			parent = parent,
+		})
+		BuildKit.part({
+			name = "Hall_Seat",
+			size = Vector3.new(5, 4.5, 3),
+			cframe = at(Vector3.new(0, floorY + 3.4, -d / 2 + 6)),
+			color = timber,
+			material = Enum.Material.Wood,
+			parent = parent,
+		})
+		for shelfSign = -1, 1, 2 do
+			BuildKit.part({
+				name = "Hall_ScrollShelf",
+				size = Vector3.new(2.2, 9, 12),
+				cframe = at(Vector3.new(shelfSign * (w / 2 - 3.4), floorY + 4.5, -d / 2 + 10)),
+				color = Color3.fromRGB(96, 72, 50),
+				material = Enum.Material.WoodPlanks,
+				parent = parent,
+			})
+		end
+		for matIndex = 0, 3 do
+			BuildKit.part({
+				name = "Hall_Mat",
+				size = Vector3.new(4, 0.25, 4),
+				cframe = at(Vector3.new(-6 + (matIndex % 2) * 12, floorY + 0.15, 2 + math.floor(matIndex / 2) * 7)),
+				color = Color3.fromRGB(178, 150, 100),
+				material = Enum.Material.Fabric,
+				canCollide = false,
+				castShadow = false,
+				parent = parent,
+			})
+		end
+		BuildKit.part({
+			name = "Hall_Table",
+			size = Vector3.new(8, 1.6, 3.4),
+			cframe = at(Vector3.new(0, floorY + 0.9, 2)),
+			color = timber,
+			material = Enum.Material.Wood,
+			parent = parent,
+		})
+		local hallLantern = BuildKit.part({
+			name = "Hall_Lantern",
+			size = Vector3.new(2, 2.6, 2),
+			cframe = at(Vector3.new(0, floorY + 12, 0)),
+			color = Color3.fromRGB(230, 170, 90),
+			material = Enum.Material.Neon,
+			canCollide = false,
+			castShadow = false,
+			parent = parent,
+		})
+		BuildKit.pointLight(hallLantern, Color3.fromRGB(255, 190, 120), 1.4, 30)
+	end
 
 	-- A crate and barrel against the wall; villages accumulate stuff.
 	BuildKit.part({
@@ -5628,6 +5818,7 @@ function BuildKit.pagodaHouse(parent: Instance, center: Vector3, width: number, 
 		timber = timber,
 		roofColor = roofColor,
 		roofMaterial = roofMaterial,
+		lanternLights = true, -- pagodas are landmarks; they earn their light
 	})
 end
 
@@ -5663,9 +5854,10 @@ function BuildKit.paifang(parent: Instance, center: Vector3, facing: Vector3, wi
 		material = Enum.Material.Wood,
 		parent = parent,
 	})
-	-- Little roof riding the top.
-	local roofCenter = center + Vector3.new(0, 0, 0)
-	BuildKit.chineseRoof(parent, roofCenter, width * 0.7, 6, pillarHeight + 4.6, roofColor)
+	-- Little roof riding the top. chineseRoof measures y from the world
+	-- origin, so the gate's own altitude must be added: without it a
+	-- paifang on the crater floor (y 44) wore its roof at its knees.
+	BuildKit.chineseRoof(parent, center, width * 0.7, 6, center.Y + pillarHeight + 4.6, roofColor)
 	return sign
 end
 
@@ -5689,13 +5881,15 @@ function BuildKit.pavilion(parent: Instance, center: Vector3, size: number, timb
 end
 
 -- Vertical-axis cylinder (Roblox cylinders lie along local X; we stand it up).
-function BuildKit.cylinder(parent: Instance, name: string, center: Vector3, height: number, diameter: number, color: Color3, material: Enum.Material): Part
+function BuildKit.cylinder(parent: Instance, name: string, center: Vector3, height: number, diameter: number, color: Color3, material: Enum.Material, canCollide: boolean?, castShadow: boolean?): Part
 	return BuildKit.part({
 		name = name,
 		size = Vector3.new(height, diameter, diameter),
 		cframe = CFrame.new(center) * CFrame.Angles(0, 0, math.rad(90)),
 		color = color,
 		material = material,
+		canCollide = canCollide,
+		castShadow = castShadow,
 		shape = Enum.PartType.Cylinder,
 		parent = parent,
 	})
@@ -5846,6 +6040,7 @@ function BuildKit.oreNode(parent: Instance, position: Vector3, oreId: string, or
 			color = color,
 			material = Enum.Material.Neon,
 			canCollide = false,
+			castShadow = false,
 			parent = model,
 		})
 	end
@@ -5891,6 +6086,12 @@ Cities.POSITIONS = table.freeze({
 	unorthodox = Vector3.new(2480, 0, 960),
 	central = Vector3.new(0, Island.VALLEY_Y, 0),
 })
+
+-- Everything each city actually placed (buildings, stalls, shrine, hall),
+-- as {x, z, r} discs. Filled during build; Flora reads it so in-city trees
+-- stop growing through houses.
+export type Footprint = { x: number, z: number, r: number }
+Cities.FOOTPRINTS = {} :: { [string]: { Footprint } }
 
 local TIMBER = Color3.fromRGB(74, 53, 39)
 
@@ -5983,7 +6184,8 @@ local function ringWall(parent: Instance, center: Vector3, radius: number, heigh
 			material = Enum.Material.Slate,
 			parent = parent,
 		})
-		-- Crenellated parapet along the outer lip.
+		-- Crenellated parapet along the outer lip. Merlons are small and
+		-- many; they read fine without shadows and there are ~600 of them.
 		local merlons = math.floor(segmentLength / 12)
 		for merlonIndex = 1, merlons do
 			local along = (merlonIndex - 0.5) / merlons * segmentLength - segmentLength / 2
@@ -5993,6 +6195,7 @@ local function ringWall(parent: Instance, center: Vector3, radius: number, heigh
 				cframe = wallCF * CFrame.new(-4, height / 2 + 3.2, along),
 				color = theme.wall,
 				material = theme.wallMaterial,
+				castShadow = false,
 				parent = parent,
 			})
 		end
@@ -6044,7 +6247,7 @@ local function gatehouse(parent: Instance, center: Vector3, radius: number, them
 		local lantern = BuildKit.part({
 			name = "Gate_Lantern",
 			size = Vector3.new(2.4, 3, 2.4),
-			cframe = at(Vector3.new(towerSign * 32, wallHeight - 2, 9)),
+			cframe = at(Vector3.new(towerSign * 32, wallHeight - 2, -9)),
 			color = Color3.fromRGB(214, 58, 44),
 			material = Enum.Material.Neon,
 			canCollide = false,
@@ -6064,22 +6267,25 @@ local function gatehouse(parent: Instance, center: Vector3, radius: number, them
 	})
 	BuildKit.roofCF(parent, cf, 48, 16, wallHeight + 8.5, theme.roof, theme.roofMaterial)
 
+	-- The name board hangs on the OUTER face (-Z is out of the city): the
+	-- traveler arriving reads it; before this it greeted people leaving.
 	local board = BuildKit.part({
 		name = "Gate_Board",
 		size = Vector3.new(24, 6, 1.6),
-		cframe = at(Vector3.new(0, wallHeight + 1, 7)),
+		cframe = at(Vector3.new(0, wallHeight + 1, -7)),
 		color = Color3.fromRGB(32, 28, 26),
 		material = Enum.Material.Wood,
 		canCollide = false,
 		parent = parent,
 	})
 
-	-- Guardian lions on pedestals, watching the road.
+	-- Guardian lions flank the approach OUTSIDE the gate, as guardian
+	-- lions do; they had been placed inside, watching residents' backs.
 	for lionSign = -1, 1, 2 do
 		BuildKit.part({
 			name = "Gate_LionPedestal",
 			size = Vector3.new(7, 5, 7),
-			cframe = at(Vector3.new(lionSign * 20, 2.5, 14)),
+			cframe = at(Vector3.new(lionSign * 20, 2.5, -14)),
 			color = Color3.fromRGB(148, 146, 142),
 			material = Enum.Material.Slate,
 			parent = parent,
@@ -6087,10 +6293,11 @@ local function gatehouse(parent: Instance, center: Vector3, radius: number, them
 		BuildKit.part({
 			name = "Gate_Lion",
 			size = Vector3.new(4.5, 5.5, 6.5),
-			cframe = at(Vector3.new(lionSign * 20, 7.5, 14)) * CFrame.Angles(0, math.rad(lionSign * 8), math.rad(lionSign * 4)),
+			cframe = at(Vector3.new(lionSign * 20, 7.5, -14)) * CFrame.Angles(0, math.rad(lionSign * 8 + 180), math.rad(lionSign * 4)),
 			color = Color3.fromRGB(126, 122, 116),
 			material = Enum.Material.Slate,
 			canCollide = false,
+			castShadow = false,
 			parent = parent,
 		})
 	end
@@ -6165,9 +6372,10 @@ local function buildCity(parent: Instance, spec: CitySpec)
 	local rng = Random.new(personality.seed)
 	local sectHallPos = center + (-toCenter) * radius * 0.52
 	local shrineFocus = center + (-toCenter) * radius * 0.22
+	local crossDirEarly = Vector3.new(-toCenter.Z, 0, toCenter.X)
 
-	type Placed = { x: number, z: number, r: number }
-	local placed: { Placed } = {}
+	local placed: { Footprint } = {}
+	Cities.FOOTPRINTS[spec.key] = placed
 
 	local function tryPlace(buildingW: number, buildingD: number, build: (CFrame) -> ())
 		local footprint = math.max(buildingW, buildingD) / 2 + 8
@@ -6176,14 +6384,21 @@ local function buildCity(parent: Instance, spec: CitySpec)
 			local dist = rng:NextNumber(0.18, 0.86) * radius
 			local x = center.X + math.cos(angle) * dist
 			local z = center.Z + math.sin(angle) * dist
-			-- Keep the gate avenue open: reject spots near the center-gate line.
 			local toSpot = Vector3.new(x - center.X, 0, z - center.Z)
+			-- Keep the gate avenue open: reject spots near the center-gate line.
 			local along = toSpot:Dot(toCenter)
 			local lateral = (toSpot - toCenter * along).Magnitude
 			if along > 0 and lateral < 26 + footprint * 0.4 then
 				continue
 			end
-			if (Vector3.new(x, 0, z) - Vector3.new(sectHallPos.X, 0, sectHallPos.Z)).Magnitude < footprint + 42 then
+			-- And the cross avenue: buildings were straddling it.
+			local alongCross = toSpot:Dot(crossDirEarly)
+			local lateralCross = (toSpot - crossDirEarly * alongCross).Magnitude
+			if math.abs(alongCross) < radius * 0.88 and lateralCross < 14 + footprint * 0.4 then
+				continue
+			end
+			-- The sect compound (walled court) and shrine keep wide ground.
+			if (Vector3.new(x, 0, z) - Vector3.new(sectHallPos.X, 0, sectHallPos.Z)).Magnitude < footprint + 64 then
 				continue
 			end
 			if (Vector3.new(x, 0, z) - Vector3.new(shrineFocus.X, 0, shrineFocus.Z)).Magnitude < footprint + 44 then
@@ -6237,6 +6452,8 @@ local function buildCity(parent: Instance, spec: CitySpec)
 					roofColor = roofColor,
 					roofMaterial = roofMaterial,
 					style = entry.style,
+					-- Halls and towers matter; only they spend PointLights.
+					lanternLights = entry.style == "hall" or entry.style == "tower",
 				})
 				-- The odd attached wing makes an L-shaped compound.
 				if entry.style == "house" and entry.floors == 2 and rng:NextNumber() < 0.35 then
@@ -6258,7 +6475,7 @@ local function buildCity(parent: Instance, spec: CitySpec)
 	-- Cobbled avenues: gate to center, and a cross through the plaza.
 	local roadColor = Color3.fromRGB(158, 150, 138)
 	local function plazaRoad(from: Vector3, to: Vector3, width: number)
-		local mid = (from + to) / 2 + Vector3.new(0, 0.85, 0)
+		local mid = (from + to) / 2 + Vector3.new(0, 0.45, 0)
 		BuildKit.part({
 			name = "Plaza_Road",
 			size = Vector3.new(width, 0.5, (to - from).Magnitude),
@@ -6276,9 +6493,106 @@ local function buildCity(parent: Instance, spec: CitySpec)
 	-- Central dais the shrine/waypost stands on.
 	BuildKit.cylinder(city, "Plaza_Dais", center + Vector3.new(0, 1, 0) + (-toCenter) * radius * 0.22, 1.6, 70, roadColor, Enum.Material.Slate)
 
-	-- Sect hall tower opposite the gate, shrine (or sign) before it.
+	-- ------------------- The sect compound -------------------
+	-- The pagoda opposite the gate is the city's seat of power, and a seat
+	-- of power has a forecourt: low walls with a gap facing the plaza,
+	-- banner poles, stone lanterns, mats and dummies to train on. This is
+	-- what makes it read as a sect, not a tall house.
 	local backDir = -toCenter
-	BuildKit.pagodaHouse(city, center + backDir * radius * 0.52, 56, 56, 4, theme.plaster, TIMBER, theme.roof, theme.roofMaterial)
+	-- Oriented so the pagoda's door faces the plaza; the axis-aligned
+	-- wrapper had every city's hall staring at world +Z, walls or not.
+	BuildKit.house(city, CFrame.lookAt(sectHallPos, sectHallPos - toCenter), {
+		width = 56,
+		depth = 56,
+		floors = 4,
+		plaster = theme.plaster,
+		timber = TIMBER,
+		roofColor = theme.roof,
+		roofMaterial = theme.roofMaterial,
+		lanternLights = true,
+	})
+	table.insert(placed, { x = sectHallPos.X, z = sectHallPos.Z, r = 60 })
+
+	local courtHalf = 52
+	local courtGap = 20
+	do
+		local courtCF = CFrame.lookAt(sectHallPos, sectHallPos + toCenter) -- -Z faces the plaza
+		local wallColor = theme.wall
+		local function courtWall(offset: Vector3, size: Vector3)
+			BuildKit.part({
+				name = "SectCourt_Wall",
+				size = size,
+				cframe = courtCF * CFrame.new(offset),
+				color = wallColor,
+				material = theme.wallMaterial,
+				parent = city,
+			})
+		end
+		-- Back and side walls solid; the front wall opens toward the plaza.
+		courtWall(Vector3.new(0, 3, courtHalf), Vector3.new(courtHalf * 2, 6, 2))
+		courtWall(Vector3.new(-courtHalf, 3, 0), Vector3.new(2, 6, courtHalf * 2))
+		courtWall(Vector3.new(courtHalf, 3, 0), Vector3.new(2, 6, courtHalf * 2))
+		local frontSeg = courtHalf - courtGap / 2
+		courtWall(Vector3.new(-(courtGap / 2 + frontSeg / 2), 3, -courtHalf), Vector3.new(frontSeg, 6, 2))
+		courtWall(Vector3.new(courtGap / 2 + frontSeg / 2, 3, -courtHalf), Vector3.new(frontSeg, 6, 2))
+		-- Court ground: packed gravel, flush with the plaza.
+		BuildKit.part({
+			name = "SectCourt_Ground",
+			size = Vector3.new(courtHalf * 2 - 2, 0.5, courtHalf * 2 - 2),
+			cframe = courtCF * CFrame.new(0, 0.65, 0),
+			color = Color3.fromRGB(168, 158, 140),
+			material = Enum.Material.Ground,
+			canCollide = false,
+			parent = city,
+		})
+		-- Banner poles flank the court gate, hung with the path's color.
+		for bannerSign = -1, 1, 2 do
+			local poleBase = courtCF * CFrame.new(bannerSign * (courtGap / 2 + 4), 0, -courtHalf)
+			BuildKit.part({
+				name = "SectCourt_BannerPole",
+				size = Vector3.new(1.2, 26, 1.2),
+				cframe = poleBase * CFrame.new(0, 13, 0),
+				color = TIMBER,
+				material = Enum.Material.Wood,
+				parent = city,
+			})
+			BuildKit.part({
+				name = "SectCourt_Banner",
+				size = Vector3.new(4.6, 14, 0.3),
+				cframe = poleBase * CFrame.new(bannerSign * 2.9, 17, 0),
+				color = spec.accent,
+				material = Enum.Material.Fabric,
+				canCollide = false,
+				castShadow = false,
+				parent = city,
+			})
+			-- Stone lantern by each pole.
+			local stoneLantern = BuildKit.part({
+				name = "SectCourt_StoneLantern",
+				size = Vector3.new(2.2, 5, 2.2),
+				cframe = poleBase * CFrame.new(bannerSign * -6, 2.5, -3),
+				color = Color3.fromRGB(148, 146, 142),
+				material = Enum.Material.Slate,
+				parent = city,
+			})
+			BuildKit.pointLight(stoneLantern, Color3.fromRGB(255, 190, 120), 1.2, 22)
+		end
+		-- Training ground inside the court: mats and two dummies.
+		for matSign = -1, 1, 2 do
+			BuildKit.part({
+				name = "SectCourt_Mat",
+				size = Vector3.new(6, 0.3, 6),
+				cframe = courtCF * CFrame.new(matSign * 24, 0.95, -18),
+				color = Color3.fromRGB(178, 150, 100),
+				material = Enum.Material.Fabric,
+				canCollide = false,
+				castShadow = false,
+				parent = city,
+			})
+			local dummyWorld = courtCF * CFrame.new(matSign * 24, 0, -30)
+			BuildKit.trainingDummy(city, Vector3.new(dummyWorld.X, center.Y, dummyWorld.Z))
+		end
+	end
 
 	local shrinePos = center + backDir * radius * 0.22
 	if pathDef then
@@ -6309,6 +6623,134 @@ local function buildCity(parent: Instance, spec: CitySpec)
 		BuildKit.billboard(waypost, "Cloudrest, the free city. Three realms, three paths, one mountain.\nThe Deep Mines lie through the southern pass.", spec.accent, 24, 3, Vector3.new(0, 7, 0))
 	end
 
+	-- Record the fixed landmarks so lanterns and flora keep clear of them.
+	table.insert(placed, { x = shrinePos.X, z = shrinePos.Z, r = 40 })
+	table.insert(placed, { x = gatePos.X, z = gatePos.Z, r = 44 })
+
+	-- ------------------- Street life along the avenue -------------------
+	-- Market stalls where the gate road meets the plaza, a well, benches
+	-- by the dais, and a notice board inside the gate: the things people
+	-- actually leave in a town square. All of it hugs the avenue so combat
+	-- lanes and the plaza stay open.
+	do
+		local avenueSide = Vector3.new(-toCenter.Z, 0, toCenter.X)
+		for stallIndex = 0, 3 do
+			local stallSide = if stallIndex % 2 == 0 then 1 else -1
+			local along = radius * (0.42 + 0.14 * math.floor(stallIndex / 2))
+			local stallPos = center + toCenter * along + avenueSide * (stallSide * 24)
+			local stallCF = CFrame.lookAt(stallPos, stallPos - avenueSide * stallSide)
+			BuildKit.part({ -- counter
+				name = "Stall_Counter",
+				size = Vector3.new(10, 3.4, 3),
+				cframe = stallCF * CFrame.new(0, 1.7 + center.Y - stallPos.Y, 0),
+				color = Color3.fromRGB(124, 94, 62),
+				material = Enum.Material.WoodPlanks,
+				parent = city,
+			})
+			for postSign = -1, 1, 2 do
+				BuildKit.part({
+					name = "Stall_Post",
+					size = Vector3.new(0.8, 9, 0.8),
+					cframe = stallCF * CFrame.new(postSign * 4.6, 4.5, -1),
+					color = TIMBER,
+					material = Enum.Material.Wood,
+					canCollide = false,
+					castShadow = false,
+					parent = city,
+				})
+			end
+			BuildKit.part({ -- cloth awning, tilted, in the city's accent
+				name = "Stall_Awning",
+				size = Vector3.new(11, 0.4, 6),
+				cframe = stallCF * CFrame.new(0, 8.6, 0) * CFrame.Angles(math.rad(-10), 0, 0),
+				color = if stallIndex % 2 == 0 then spec.accent else Color3.fromRGB(214, 200, 170),
+				material = Enum.Material.Fabric,
+				canCollide = false,
+				castShadow = false,
+				parent = city,
+			})
+			BuildKit.part({ -- goods crate
+				name = "Stall_Crate",
+				size = Vector3.new(2.6, 2.6, 2.6),
+				cframe = stallCF * CFrame.new(6.4, 1.3, 0.5) * CFrame.Angles(0, 0.5, 0),
+				color = Color3.fromRGB(140, 108, 72),
+				material = Enum.Material.WoodPlanks,
+				castShadow = false,
+				parent = city,
+			})
+			table.insert(placed, { x = stallPos.X, z = stallPos.Z, r = 10 })
+		end
+
+		-- The town well, off the dais toward the cross road.
+		local wellPos = center + avenueSide * (radius * 0.16) + toCenter * (radius * 0.06)
+		BuildKit.cylinder(city, "Well_Ring", wellPos + Vector3.new(0, 1.4, 0), 2.8, 8, Color3.fromRGB(140, 138, 134), Enum.Material.Cobblestone)
+		BuildKit.cylinder(city, "Well_Hole", wellPos + Vector3.new(0, 2.9, 0), 0.3, 5.5, Color3.fromRGB(24, 26, 30), Enum.Material.SmoothPlastic, false, false)
+		for wellSign = -1, 1, 2 do
+			BuildKit.part({
+				name = "Well_Post",
+				size = Vector3.new(0.8, 7, 0.8),
+				position = wellPos + Vector3.new(wellSign * 3.6, 3.5, 0),
+				color = TIMBER,
+				material = Enum.Material.Wood,
+				canCollide = false,
+				castShadow = false,
+				parent = city,
+			})
+		end
+		BuildKit.chineseRoof(city, wellPos, 7, 7, wellPos.Y + 7, theme.roof, theme.roofMaterial)
+		BuildKit.part({
+			name = "Well_Bucket",
+			size = Vector3.new(1.4, 1.6, 1.4),
+			position = wellPos + Vector3.new(1.2, 5.2, 0),
+			color = Color3.fromRGB(104, 76, 50),
+			material = Enum.Material.Wood,
+			canCollide = false,
+			castShadow = false,
+			parent = city,
+		})
+		table.insert(placed, { x = wellPos.X, z = wellPos.Z, r = 10 })
+
+		-- Notice board just inside the gate, by the avenue's edge.
+		local boardPos = center + toCenter * (radius * 0.8) + avenueSide * 22
+		local noticeCF = CFrame.lookAt(boardPos, boardPos - avenueSide)
+		BuildKit.part({
+			name = "NoticeBoard",
+			size = Vector3.new(9, 6, 0.8),
+			cframe = noticeCF * CFrame.new(0, 6, 0),
+			color = Color3.fromRGB(96, 72, 50),
+			material = Enum.Material.WoodPlanks,
+			canCollide = false,
+			parent = city,
+		})
+		for boardSign = -1, 1, 2 do
+			BuildKit.part({
+				name = "NoticeBoard_Post",
+				size = Vector3.new(1, 9.5, 1),
+				cframe = noticeCF * CFrame.new(boardSign * 4, 4.75, 0),
+				color = TIMBER,
+				material = Enum.Material.Wood,
+				parent = city,
+			})
+		end
+		BuildKit.chineseRoof(city, boardPos, 8, 3, boardPos.Y + 9.6, theme.roof, theme.roofMaterial)
+		table.insert(placed, { x = boardPos.X, z = boardPos.Z, r = 8 })
+
+		-- Benches around the dais rim.
+		for benchIndex = 0, 2 do
+			local benchAngle = benchIndex * (math.pi * 2 / 3) + 0.6
+			local benchPos = shrinePos + Vector3.new(math.cos(benchAngle) * 42, 0, math.sin(benchAngle) * 42)
+			BuildKit.part({
+				name = "Bench",
+				size = Vector3.new(6.5, 1.6, 2),
+				cframe = CFrame.lookAt(benchPos + Vector3.new(0, 0.8 + center.Y - benchPos.Y, 0), Vector3.new(shrinePos.X, benchPos.Y + 0.8, shrinePos.Z)),
+				color = Color3.fromRGB(118, 90, 60),
+				material = Enum.Material.Wood,
+				castShadow = false,
+				parent = city,
+			})
+		end
+	end
+
 	-- Spawn, lanterns, sanctuary, and gate dummies.
 	local spawnColor = if pathDef then pathDef.teamBrickColor else "Medium stone grey"
 	BuildKit.spawnLocation(city, shrinePos + toCenter * 18 + Vector3.new(0, 1, 0), spawnColor, false)
@@ -6316,10 +6758,24 @@ local function buildCity(parent: Instance, spec: CitySpec)
 	local lanternRed = Color3.fromRGB(210, 60, 45)
 	for index = 1, 10 do
 		local angle = index / 10 * math.pi * 2 + 0.3
+		local lanternPos = center + Vector3.new(math.cos(angle) * radius * 0.86, 0, math.sin(angle) * radius * 0.86)
+		-- Skip a post that would stand inside something already built.
+		local blocked = false
+		for _, other in placed do
+			local dx = lanternPos.X - other.x
+			local dz = lanternPos.Z - other.z
+			if dx * dx + dz * dz < (other.r + 2) * (other.r + 2) then
+				blocked = true
+				break
+			end
+		end
+		if blocked then
+			continue
+		end
 		local post = BuildKit.part({
 			name = "Lantern",
 			size = Vector3.new(1, 11, 1),
-			position = center + Vector3.new(math.cos(angle) * radius * 0.86, 5.5, math.sin(angle) * radius * 0.86),
+			position = lanternPos + Vector3.new(0, 5.5, 0),
 			color = TIMBER,
 			material = Enum.Material.Wood,
 			parent = city,
@@ -6331,6 +6787,7 @@ local function buildCity(parent: Instance, spec: CitySpec)
 			color = lanternRed,
 			material = Enum.Material.Neon,
 			canCollide = false,
+			castShadow = false,
 			parent = city,
 		})
 		BuildKit.pointLight(lamp, Color3.fromRGB(255, 150, 110), 1.6, 26)
@@ -6437,7 +6894,9 @@ local function pineTree(parent: Instance, position: Vector3, rng: Random, snowy:
 		parent = parent,
 	})
 	-- Thick overlapping tiers build a solid cone; the old 2-stud pancake
-	-- discs read as stacked umbrella tables from any distance.
+	-- discs read as stacked umbrella tables from any distance. Crowns do
+	-- not collide: an invisible ceiling under every tree feels terrible,
+	-- and with CanQuery off, techniques fly through leaves.
 	local layers = rng:NextInteger(4, 5)
 	for layer = 1, layers do
 		local t = (layer - 1) / layers
@@ -6448,16 +6907,87 @@ local function pineTree(parent: Instance, position: Vector3, rng: Random, snowy:
 			elseif layer % 2 == 0 then PINE_DARK
 			else PINE_GREEN
 		BuildKit.cylinder(parent, "Pine_Canopy", Vector3.new(position.X, layerY, position.Z), height * 0.14, diameter,
-			color, if snowy and layer == layers then Enum.Material.Snow else Enum.Material.Grass)
+			color, if snowy and layer == layers then Enum.Material.Snow else Enum.Material.Grass, false)
 		if snowy and layer < layers then
 			-- Snow dusting on the lower boughs' rims.
 			BuildKit.cylinder(parent, "Pine_Snow", Vector3.new(position.X, layerY + height * 0.075, position.Z), 1.2, diameter * 0.85,
-				SNOW_WHITE, Enum.Material.Snow)
+				SNOW_WHITE, Enum.Material.Snow, false, false)
 		end
 	end
 	-- A pointed tip finishes the cone.
 	BuildKit.cylinder(parent, "Pine_Tip", Vector3.new(position.X, position.Y + height * 1.08, position.Z), height * 0.12, 6.5,
-		if snowy then SNOW_WHITE else PINE_GREEN, if snowy then Enum.Material.Snow else Enum.Material.Grass)
+		if snowy then SNOW_WHITE else PINE_GREEN, if snowy then Enum.Material.Snow else Enum.Material.Grass, false, false)
+end
+
+-- A dead, wind-bent tree for the harsh country: bare trunk, a few gnarled
+-- branches, no leaves. The desert had "the odd hardy pine", which read as
+-- a lush park tree standing in sand.
+local function deadTree(parent: Instance, position: Vector3, rng: Random)
+	local height = rng:NextNumber(18, 34)
+	local lean = rng:NextNumber(-0.16, 0.16)
+	local wood = Color3.fromRGB(96, 82, 66)
+	BuildKit.part({
+		name = "DeadTree_Trunk",
+		size = Vector3.new(2.4, height, 2.4),
+		cframe = CFrame.new(position + Vector3.new(0, height / 2, 0)) * CFrame.Angles(lean, 0, lean * 0.7),
+		color = wood,
+		material = Enum.Material.Wood,
+		parent = parent,
+	})
+	for _ = 1, rng:NextInteger(2, 4) do
+		local branchY = height * rng:NextNumber(0.45, 0.9)
+		local yaw = rng:NextNumber(0, math.pi * 2)
+		local pitch = rng:NextNumber(0.5, 1.1)
+		BuildKit.part({
+			name = "DeadTree_Branch",
+			size = Vector3.new(0.9, rng:NextNumber(6, 12), 0.9),
+			cframe = CFrame.new(position + Vector3.new(0, branchY, 0))
+				* CFrame.Angles(0, yaw, pitch)
+				* CFrame.new(0, 3.5, 0),
+			color = wood,
+			material = Enum.Material.Wood,
+			canCollide = false,
+			castShadow = false,
+			parent = parent,
+		})
+	end
+end
+
+-- Forest-floor filler: a mossy fallen log or a huddle of shrubs. What
+-- breaks "hundreds of evenly spaced trees" into something walked-through.
+local function fallenLog(parent: Instance, position: Vector3, rng: Random)
+	local length = rng:NextNumber(9, 16)
+	local yaw = rng:NextNumber(0, math.pi * 2)
+	-- Roblox cylinders already lie along local X, so a log needs only yaw.
+	local log = BuildKit.part({
+		name = "FallenLog",
+		size = Vector3.new(length, 2.2, 2.2),
+		cframe = CFrame.new(position + Vector3.new(0, 1, 0)) * CFrame.Angles(0, yaw, 0),
+		color = Color3.fromRGB(86, 66, 48),
+		material = Enum.Material.Wood,
+		shape = Enum.PartType.Cylinder,
+		parent = parent,
+	})
+	BuildKit.part({
+		name = "FallenLog_Moss",
+		size = Vector3.new(length * 0.6, 0.4, 2),
+		cframe = log.CFrame * CFrame.new(0, 1.1, 0),
+		color = Color3.fromRGB(88, 120, 70),
+		material = Enum.Material.Grass,
+		canCollide = false,
+		castShadow = false,
+		parent = parent,
+	})
+end
+
+local function shrubs(parent: Instance, position: Vector3, rng: Random)
+	for _ = 1, rng:NextInteger(2, 4) do
+		local size = rng:NextNumber(3, 6)
+		puff(parent,
+			position + Vector3.new(rng:NextNumber(-5, 5), size * 0.3, rng:NextNumber(-5, 5)),
+			Vector3.new(size, size * 0.7, size),
+			if rng:NextNumber() < 0.8 then Color3.fromRGB(78, 112, 64) else Color3.fromRGB(126, 150, 84))
+	end
 end
 
 local function blossomTree(parent: Instance, position: Vector3, rng: Random)
@@ -6555,6 +7085,40 @@ local function boulder(parent: Instance, position: Vector3, rng: Random, snowy: 
 	})
 end
 
+-- Distance from point P to the segment A-B, in the ground plane.
+local function distanceToSegment(px: number, pz: number, ax: number, az: number, bx: number, bz: number): number
+	local abx, abz = bx - ax, bz - az
+	local lengthSq = abx * abx + abz * abz
+	if lengthSq < 1e-4 then
+		return math.sqrt((px - ax) ^ 2 + (pz - az) ^ 2)
+	end
+	local t = math.clamp(((px - ax) * abx + (pz - az) * abz) / lengthSq, 0, 1)
+	local cx, cz = ax + abx * t, az + abz * t
+	return math.sqrt((px - cx) ^ 2 + (pz - cz) ^ 2)
+end
+
+-- The spoke roads Overworld lays from the inner ring to each biome city
+-- gate; kept in sync with Overworld.buildRoads by construction from the
+-- same city positions.
+local SPOKES: { { ax: number, az: number, bx: number, bz: number } } = {}
+for _, key in { "orthodox", "demonic", "unorthodox" } do
+	local center = Cities.POSITIONS[key]
+	local direction = Vector3.new(center.X, 0, center.Z).Unit
+	table.insert(SPOKES, {
+		ax = direction.X * 1280,
+		az = direction.Z * 1280,
+		bx = center.X - direction.X * 380,
+		bz = center.Z - direction.Z * 380,
+	})
+end
+
+-- The Sacred sites' clearings (kept in sync with World/Sacred by hand;
+-- both are code, so a drift shows up the first time either moves).
+local SACRED_CLEARINGS = {
+	{ x = 1750, z = 1050, r = 50 }, -- the bamboo grove
+	{ x = -900, z = 2200, r = 50 }, -- the blossom hill
+}
+
 local function clearOfLandmarks(x: number, z: number): boolean
 	local distance = math.sqrt(x * x + z * z)
 	if distance < 1080 or distance > 3350 then
@@ -6564,6 +7128,23 @@ local function clearOfLandmarks(x: number, z: number): boolean
 		local dx = x - center.X
 		local dz = z - center.Z
 		if dx * dx + dz * dz < 400 * 400 then
+			return false
+		end
+	end
+	for _, clearing in SACRED_CLEARINGS do
+		local dx = x - clearing.x
+		local dz = z - clearing.z
+		if dx * dx + dz * dz < clearing.r * clearing.r then
+			return false
+		end
+	end
+	-- Off the roads: the two ring roads are circles about the origin, the
+	-- spokes are segments. A tree in the road is a tree in the road.
+	if math.abs(distance - 1280) < 18 or math.abs(distance - 2480) < 18 then
+		return false
+	end
+	for _, spoke in SPOKES do
+		if distanceToSegment(x, z, spoke.ax, spoke.az, spoke.bx, spoke.bz) < 16 then
 			return false
 		end
 	end
@@ -6584,40 +7165,65 @@ function Flora.build(parent: Instance)
 		local biome = Island.biomeAt(x, z)
 		local roll = rng:NextNumber()
 		if biome == "snow" then
-			if roll < 0.75 then
+			if roll < 0.7 then
 				pineTree(parent, position, rng, true)
-			else
+			elseif roll < 0.88 then
 				boulder(parent, position, rng, true)
+			else
+				deadTree(parent, position, rng)
 			end
 		elseif biome == "desert" then
-			if roll < 0.55 then
+			if roll < 0.5 then
 				cactus(parent, position, rng)
-			elseif roll < 0.8 then
+			elseif roll < 0.75 then
 				boulder(parent, position, rng, false)
 			else
-				pineTree(parent, position, rng, false) -- the odd hardy tree
+				deadTree(parent, position, rng) -- wind-bent, bare; not a park pine
 			end
 		else
-			if roll < 0.42 then
+			if roll < 0.36 then
 				pineTree(parent, position, rng, false)
-			elseif roll < 0.68 then
+			elseif roll < 0.58 then
 				blossomTree(parent, position, rng)
-			elseif roll < 0.85 then
+			elseif roll < 0.74 then
 				bambooClump(parent, position, rng)
-			else
+			elseif roll < 0.84 then
 				boulder(parent, position, rng, false)
+			elseif roll < 0.92 then
+				shrubs(parent, position, rng)
+			else
+				fallenLog(parent, position, rng)
 			end
 		end
 	end
 
 	-- Trees inside every city's walls, like the reference village: blossoms
 	-- and pines between the houses (biome-appropriate outside the crater).
+	-- Each candidate is checked against what the city actually built, so a
+	-- tree no longer grows out of somebody's roof.
 	for key, center in Cities.POSITIONS :: { [string]: Vector3 } do
 		local cityRng = Random.new(31 + #key)
-		for _ = 1, 7 do
+		local footprints: { Cities.Footprint } = Cities.FOOTPRINTS[key] or {}
+		local planted = 0
+		local attempts = 0
+		while planted < 7 and attempts < 40 do
+			attempts += 1
 			local angle = cityRng:NextNumber(0, math.pi * 2)
 			local dist = cityRng:NextNumber(70, 220)
 			local position = Vector3.new(center.X + math.cos(angle) * dist, center.Y, center.Z + math.sin(angle) * dist)
+			local blocked = false
+			for _, footprint in footprints do
+				local dx = position.X - footprint.x
+				local dz = position.Z - footprint.z
+				if dx * dx + dz * dz < (footprint.r + 6) * (footprint.r + 6) then
+					blocked = true
+					break
+				end
+			end
+			if blocked then
+				continue
+			end
+			planted += 1
 			local biome: Island.Biome = if key == "central" then "green" else Island.biomeAt(position.X, position.Z)
 			if biome == "snow" then
 				pineTree(parent, position, cityRng, true)
@@ -7106,6 +7712,16 @@ local function buildCraterStair(parent: Instance)
 			parent = parent,
 		})
 	end
+	-- Invisible ramp over the treads: 57 collidable 0.8-stud steps walk,
+	-- but they judder underfoot; feet ride this smooth plane while the eye
+	-- keeps the stonework. The oldest staircase trick there is.
+	BuildKit.wedgePart({
+		name = "GrandStair_WalkRamp",
+		size = Vector3.new(40, topY, (toZ - fromZ) + 4),
+		cframe = CFrame.new(0, 0.7 + topY / 2, (fromZ + toZ) / 2) * CFrame.Angles(0, math.pi, 0),
+		transparency = 1,
+		parent = parent,
+	})
 end
 
 -- ------------------------------ Mine gate -------------------------------
@@ -7145,27 +7761,209 @@ local function buildNorthPeak(parent: Instance)
 		Color3.fromRGB(210, 205, 190), Enum.Material.Marble)
 	BuildKit.billboard(platform, "The Summit of Heavenpillar. Meditate above the falls.", Color3.fromRGB(255, 235, 180), 18, 1.8, Vector3.new(0, 6, 0))
 
-	-- Waterfall dressing: foam at the pool and drifting mist.
+	-- Waterfall dressing: foam at the pool, drifting mist, and wet rocks
+	-- ringing the plunge so the water lands ON something.
 	local poolCenter = Vector3.new(0, Island.VALLEY_Y + 0.4, -448)
-	local foam = BuildKit.cylinder(parent, "Waterfall_Foam", poolCenter, 0.6, 56, Color3.fromRGB(235, 245, 250), Enum.Material.SmoothPlastic)
+	local foam = BuildKit.cylinder(parent, "Waterfall_Foam", poolCenter, 0.6, 56, Color3.fromRGB(235, 245, 250), Enum.Material.SmoothPlastic, false)
 	foam.Transparency = 0.45
-	foam.CanCollide = false
-	local mistAnchor = BuildKit.part({
-		name = "Waterfall_Mist",
-		size = Vector3.new(1, 1, 1),
-		position = poolCenter + Vector3.new(0, 8, -30),
-		transparency = 1,
-		canCollide = false,
-		parent = parent,
-	})
-	local mist = Instance.new("ParticleEmitter")
-	mist.Rate = 8
-	mist.Lifetime = NumberRange.new(2, 4)
-	mist.Speed = NumberRange.new(1, 3)
-	mist.Size = NumberSequence.new(8, 16)
-	mist.Transparency = NumberSequence.new(0.75, 1)
-	mist.Color = ColorSequence.new(Color3.fromRGB(230, 240, 250))
-	mist.Parent = mistAnchor
+	local rockRng = Random.new(9)
+	for rockIndex = 1, 6 do
+		local rockAngle = rockIndex / 6 * math.pi * 2 + 0.4
+		local rockSize = rockRng:NextNumber(4, 9)
+		BuildKit.part({
+			name = "Waterfall_Rock",
+			size = Vector3.new(rockSize, rockSize * 0.7, rockSize * rockRng:NextNumber(0.7, 1.2)),
+			cframe = CFrame.new(poolCenter + Vector3.new(math.cos(rockAngle) * 30, 0.6, math.sin(rockAngle) * 30 - 4))
+				* CFrame.Angles(rockRng:NextNumber(0, 0.3), rockRng:NextNumber(0, math.pi), rockRng:NextNumber(0, 0.25)),
+			color = Color3.fromRGB(74, 76, 84),
+			material = Enum.Material.Slate,
+			parent = parent,
+		})
+	end
+	local function mistAt(position: Vector3, rate: number, size: NumberSequence)
+		local anchor = BuildKit.part({
+			name = "Waterfall_Mist",
+			size = Vector3.new(1, 1, 1),
+			position = position,
+			transparency = 1,
+			canCollide = false,
+			parent = parent,
+		})
+		local mist = Instance.new("ParticleEmitter")
+		mist.Rate = rate
+		mist.Lifetime = NumberRange.new(2, 4)
+		mist.Speed = NumberRange.new(1, 3)
+		mist.Size = size
+		mist.Transparency = NumberSequence.new(0.75, 1)
+		mist.Color = ColorSequence.new(Color3.fromRGB(230, 240, 250))
+		mist.Parent = anchor
+	end
+	mistAt(poolCenter + Vector3.new(0, 8, -30), 8, NumberSequence.new(8, 16))
+	-- A second breath of spray halfway up the cascade.
+	mistAt(Vector3.new(0, 250, -655), 5, NumberSequence.new(12, 22))
+end
+
+-- --------------- Wayside details and old stories in stone ---------------
+-- Small, placed by hand, each implying something: this world was lived in
+-- long before the player arrived. Nothing explains itself.
+
+local function buildWaysides(parent: Instance)
+	-- Stone lantern pairs where each spoke road nears its city gate.
+	for _, key in { "orthodox", "demonic", "unorthodox" } do
+		local center = Cities.POSITIONS[key]
+		local direction = Vector3.new(center.X, 0, center.Z).Unit
+		local side = Vector3.new(-direction.Z, 0, direction.X)
+		for step = 0, 1 do
+			local along = Vector3.new(center.X, 0, center.Z) - direction * (392 + step * 60)
+			for lanternSign = -1, 1, 2 do
+				local base = along + side * (lanternSign * 10)
+				BuildKit.part({
+					name = "Wayside_StoneLantern",
+					size = Vector3.new(2, 4.6, 2),
+					position = base + Vector3.new(0, 2.3, 0),
+					color = Color3.fromRGB(150, 148, 144),
+					material = Enum.Material.Slate,
+					parent = parent,
+				})
+				BuildKit.part({
+					name = "Wayside_LanternCap",
+					size = Vector3.new(3, 1, 3),
+					position = base + Vector3.new(0, 5.1, 0),
+					color = Color3.fromRGB(120, 118, 116),
+					material = Enum.Material.Slate,
+					canCollide = false,
+					castShadow = false,
+					parent = parent,
+				})
+			end
+		end
+	end
+
+	-- An overgrown stair that climbs to nothing, east of the southern pass.
+	do
+		local base = Vector3.new(430, 0, 1480)
+		for step = 0, 6 do
+			BuildKit.part({
+				name = "Ruin_Stair",
+				size = Vector3.new(12, 1.4, 3.4),
+				cframe = CFrame.new(base + Vector3.new(0, 0.7 + step * 1.1, -step * 3)) * CFrame.Angles(0, math.rad(8), 0),
+				color = Color3.fromRGB(136, 138, 130),
+				material = Enum.Material.Cobblestone,
+				parent = parent,
+			})
+		end
+		BuildKit.part({ -- moss creeping over the lowest treads
+			name = "Ruin_Moss",
+			size = Vector3.new(10, 0.3, 5),
+			cframe = CFrame.new(base + Vector3.new(1, 1.5, 1)) * CFrame.Angles(0, math.rad(8), 0),
+			color = Color3.fromRGB(88, 120, 70),
+			material = Enum.Material.Grass,
+			canCollide = false,
+			castShadow = false,
+			parent = parent,
+		})
+		-- The statue the stair once led to, toppled beside it.
+		BuildKit.part({
+			name = "Ruin_StatueTorso",
+			size = Vector3.new(4, 9, 4),
+			cframe = CFrame.new(base + Vector3.new(9, 2.2, -22)) * CFrame.Angles(math.rad(78), 0.6, 0),
+			color = Color3.fromRGB(150, 148, 144),
+			material = Enum.Material.Slate,
+			parent = parent,
+		})
+		BuildKit.part({
+			name = "Ruin_StatueHead",
+			size = Vector3.new(3, 3.4, 3),
+			cframe = CFrame.new(base + Vector3.new(3, 1.7, -26)) * CFrame.Angles(0.4, 1.9, 0.3),
+			color = Color3.fromRGB(150, 148, 144),
+			material = Enum.Material.Slate,
+			parent = parent,
+		})
+	end
+
+	-- A wayside shrine on the east road, long abandoned.
+	do
+		local base = Vector3.new(1620, 0, 520)
+		for postSign = -1, 1, 2 do
+			BuildKit.part({
+				name = "OldShrine_Post",
+				size = Vector3.new(1.6, 11, 1.6),
+				position = base + Vector3.new(postSign * 5, 5.5, 0),
+				color = Color3.fromRGB(88, 70, 56),
+				material = Enum.Material.Wood,
+				parent = parent,
+			})
+		end
+		BuildKit.wedgePart({ -- roof slumped off its posts
+			name = "OldShrine_FallenRoof",
+			size = Vector3.new(13, 3, 9),
+			cframe = CFrame.new(base + Vector3.new(2, 1.6, 6)) * CFrame.Angles(math.rad(14), 0.5, math.rad(-6)),
+			color = Color3.fromRGB(70, 76, 82),
+			material = Enum.Material.Slate,
+			parent = parent,
+		})
+		BuildKit.part({
+			name = "OldShrine_Altar",
+			size = Vector3.new(5, 2.6, 3),
+			position = base + Vector3.new(0, 1.3, -2),
+			color = Color3.fromRGB(140, 138, 134),
+			material = Enum.Material.Cobblestone,
+			parent = parent,
+		})
+	end
+
+	-- A boulder split clean through by one old sword stroke, near the
+	-- orthodox road. The cut is a thin dark gap between the halves.
+	do
+		local base = Vector3.new(-160, 0, -1620)
+		BuildKit.part({
+			name = "SwordCut_HalfA",
+			size = Vector3.new(7, 8, 9),
+			cframe = CFrame.new(base + Vector3.new(-3.9, 3.2, 0)) * CFrame.Angles(0, 0.3, math.rad(-7)),
+			color = Color3.fromRGB(126, 124, 120),
+			material = Enum.Material.Slate,
+			parent = parent,
+		})
+		BuildKit.part({
+			name = "SwordCut_HalfB",
+			size = Vector3.new(7, 8, 9),
+			cframe = CFrame.new(base + Vector3.new(3.9, 3.2, 0)) * CFrame.Angles(0, 0.3, math.rad(7)),
+			color = Color3.fromRGB(126, 124, 120),
+			material = Enum.Material.Slate,
+			parent = parent,
+		})
+		BuildKit.part({ -- a practice sword left rusting against the stone
+			name = "SwordCut_OldBlade",
+			size = Vector3.new(0.4, 5, 1),
+			cframe = CFrame.new(base + Vector3.new(-7.6, 2, 3)) * CFrame.Angles(math.rad(-24), 0.4, 0),
+			color = Color3.fromRGB(96, 88, 80),
+			material = Enum.Material.CorrodedMetal,
+			canCollide = false,
+			castShadow = false,
+			parent = parent,
+		})
+	end
+
+	-- Weathered stone tablets on the approach to the mine gate.
+	do
+		local tablets = BuildKit.part({
+			name = "OldTablet",
+			size = Vector3.new(4, 7, 1.2),
+			cframe = CFrame.new(-30, 3.2, 1015) * CFrame.Angles(0, math.rad(14), math.rad(-4)),
+			color = Color3.fromRGB(132, 130, 124),
+			material = Enum.Material.Slate,
+			parent = parent,
+		})
+		BuildKit.part({
+			name = "OldTablet",
+			size = Vector3.new(4, 5.4, 1.2),
+			cframe = CFrame.new(-37, 2.4, 1012) * CFrame.Angles(0, math.rad(-9), math.rad(6)),
+			color = Color3.fromRGB(132, 130, 124),
+			material = Enum.Material.Slate,
+			parent = parent,
+		})
+		BuildKit.billboard(tablets, "The script has worn away. Something was promised here.", Color3.fromRGB(200, 205, 210), 16, 2, Vector3.new(0, 5, 0))
+	end
 end
 
 -- -------------------------------- Sky -----------------------------------
@@ -7230,6 +8028,7 @@ function Overworld.build(parent: Instance)
 	buildCraterStair(parent)
 	buildMineEntrance(parent)
 	buildNorthPeak(parent)
+	buildWaysides(parent)
 	tuneSky()
 end
 
@@ -7238,6 +8037,252 @@ return Overworld
             </Properties>
           </Item>
           <Item class="ModuleScript" referent="39">
+            <Properties>
+              <string name="Name">Sacred</string>
+              <string name="Source"><![CDATA[--!strict
+-- ModuleScript: ServerScriptService > Server > Systems > World > Sacred
+-- Places worth meditating in: a deck beside the waterfall pool, a bamboo
+-- grove pavilion in the eastern forest, a blossom hill in the south, and
+-- the summit platform's marker. Each carries the CultivationZone tag and a
+-- QiDensity attribute; nothing reads them yet, so today they are pure
+-- scenery, and the day meditation bonuses arrive the world is already
+-- marked out. (QiSystem is the intended reader.)
+
+local CollectionService = game:GetService("CollectionService")
+
+local BuildKit = require(script.Parent.BuildKit)
+local Island = require(script.Parent.Island)
+
+local Sacred = {}
+
+local MAT_COLOR = Color3.fromRGB(178, 150, 100)
+local STONE = Color3.fromRGB(150, 148, 144)
+local TIMBER = Color3.fromRGB(74, 53, 39)
+
+-- Invisible marker the future bonus system will query.
+local function markZone(parent: Instance, position: Vector3, radius: number, qiDensity: number, siteName: string)
+	local marker = BuildKit.part({
+		name = "CultivationZone",
+		size = Vector3.new(1, 1, 1),
+		position = position,
+		transparency = 1,
+		canCollide = false,
+		parent = parent,
+	})
+	marker:SetAttribute("Radius", radius)
+	marker:SetAttribute("QiDensity", qiDensity)
+	marker:SetAttribute("SiteName", siteName)
+	CollectionService:AddTag(marker, "CultivationZone")
+end
+
+local function mats(parent: Instance, center: Vector3, count: number, ringRadius: number)
+	for index = 1, count do
+		local angle = index / count * math.pi * 2
+		BuildKit.part({
+			name = "Meditation_Mat",
+			size = Vector3.new(3.6, 0.25, 3.6),
+			cframe = CFrame.new(center + Vector3.new(math.cos(angle) * ringRadius, 0.15, math.sin(angle) * ringRadius))
+				* CFrame.Angles(0, -angle, 0),
+			color = MAT_COLOR,
+			material = Enum.Material.Fabric,
+			canCollide = false,
+			castShadow = false,
+			parent = parent,
+		})
+	end
+end
+
+local function stoneLantern(parent: Instance, position: Vector3, lit: boolean)
+	BuildKit.part({
+		name = "Sacred_StoneLantern",
+		size = Vector3.new(2, 4.6, 2),
+		position = position + Vector3.new(0, 2.3, 0),
+		color = STONE,
+		material = Enum.Material.Slate,
+		parent = parent,
+	})
+	local cap = BuildKit.part({
+		name = "Sacred_LanternCap",
+		size = Vector3.new(3, 1, 3),
+		position = position + Vector3.new(0, 5.1, 0),
+		color = Color3.fromRGB(120, 118, 116),
+		material = Enum.Material.Slate,
+		canCollide = false,
+		castShadow = false,
+		parent = parent,
+	})
+	if lit then
+		BuildKit.pointLight(cap, Color3.fromRGB(255, 200, 130), 1.1, 20)
+	end
+end
+
+-- ------------------- The pool deck under the waterfall -------------------
+
+local function buildPoolDeck(parent: Instance)
+	local deckCenter = Vector3.new(0, Island.VALLEY_Y + 0.6, -376)
+	BuildKit.part({
+		name = "PoolDeck",
+		size = Vector3.new(26, 1.2, 18),
+		position = deckCenter,
+		color = Color3.fromRGB(133, 100, 68),
+		material = Enum.Material.WoodPlanks,
+		parent = parent,
+	})
+	-- Low rail on the water side only; the view stays open.
+	BuildKit.part({
+		name = "PoolDeck_Rail",
+		size = Vector3.new(26, 2, 0.8),
+		position = deckCenter + Vector3.new(0, 1.6, -9),
+		color = Color3.fromRGB(94, 70, 48),
+		material = Enum.Material.Wood,
+		parent = parent,
+	})
+	mats(parent, deckCenter + Vector3.new(0, 0.6, 2), 4, 7)
+	stoneLantern(parent, deckCenter + Vector3.new(-11, -0.6, 8), true)
+	stoneLantern(parent, deckCenter + Vector3.new(11, -0.6, 8), true)
+	local deck = parent:FindFirstChild("PoolDeck")
+	if deck and deck:IsA("BasePart") then
+		BuildKit.billboard(deck, "The Listening Deck. The falls drown every thought but your own.", Color3.fromRGB(210, 230, 245), 20, 2.2, Vector3.new(0, 6, 0))
+	end
+	markZone(parent, deckCenter, 26, 2, "The Listening Deck")
+end
+
+-- ----------------------- The bamboo grove pavilion -----------------------
+
+local function buildBambooGrove(parent: Instance)
+	local center = Vector3.new(1750, 0, 1050)
+	local rng = Random.new(77)
+	-- A ring of giant bamboo enclosing the clearing, gap to the west.
+	for index = 1, 14 do
+		local angle = index / 14 * math.pi * 2
+		if math.abs(math.atan2(math.sin(angle - math.pi), math.cos(angle - math.pi))) < 0.5 then
+			continue -- the way in
+		end
+		local culmBase = center + Vector3.new(math.cos(angle) * rng:NextNumber(24, 34), 0, math.sin(angle) * rng:NextNumber(24, 34))
+		local culmHeight = rng:NextNumber(55, 85)
+		BuildKit.part({
+			name = "Grove_Bamboo",
+			size = Vector3.new(1.6, culmHeight, 1.6),
+			cframe = CFrame.new(culmBase + Vector3.new(0, culmHeight / 2, 0)) * CFrame.Angles(rng:NextNumber(-0.04, 0.04), 0, rng:NextNumber(-0.04, 0.04)),
+			color = Color3.fromRGB(126, 168, 92),
+			material = Enum.Material.SmoothPlastic,
+			parent = parent,
+		})
+		local leaves = BuildKit.part({
+			name = "Grove_Leaves",
+			size = Vector3.new(1, 1, 1),
+			position = culmBase + Vector3.new(0, culmHeight, 0),
+			color = Color3.fromRGB(104, 146, 78),
+			material = Enum.Material.Grass,
+			canCollide = false,
+			castShadow = false,
+			parent = parent,
+		})
+		local mesh = Instance.new("SpecialMesh")
+		mesh.MeshType = Enum.MeshType.Sphere
+		mesh.Scale = Vector3.new(rng:NextNumber(11, 15), rng:NextNumber(6, 8), rng:NextNumber(11, 15))
+		mesh.Parent = leaves
+	end
+	BuildKit.pavilion(parent, center, 16, TIMBER, Color3.fromRGB(70, 96, 74))
+	mats(parent, center + Vector3.new(0, 0.4, 0), 4, 6)
+	local zone = BuildKit.part({
+		name = "GroveHeart",
+		size = Vector3.new(2, 0.4, 2),
+		position = center + Vector3.new(0, 0.2, 0),
+		color = STONE,
+		material = Enum.Material.Marble,
+		canCollide = false,
+		parent = parent,
+	})
+	BuildKit.billboard(zone, "The Whispering Grove. Bamboo bends; the cultivator does not.", Color3.fromRGB(170, 210, 150), 20, 2.2, Vector3.new(0, 8, 0))
+	markZone(parent, center, 30, 2, "The Whispering Grove")
+end
+
+-- -------------------------- The blossom circle ---------------------------
+
+local function buildBlossomHill(parent: Instance)
+	local center = Vector3.new(-900, 0, 2200)
+	-- One ancient blossom tree, far larger than its forest kin.
+	local trunkHeight = 52
+	BuildKit.part({
+		name = "AncientBlossom_Trunk",
+		size = Vector3.new(6, trunkHeight, 6),
+		cframe = CFrame.new(center + Vector3.new(0, trunkHeight / 2, 0)) * CFrame.Angles(0.05, 0, -0.07),
+		color = Color3.fromRGB(70, 54, 44),
+		material = Enum.Material.Wood,
+		parent = parent,
+	})
+	local canopyRng = Random.new(5)
+	for _ = 1, 9 do
+		local offset = Vector3.new(canopyRng:NextNumber(-16, 16), canopyRng:NextNumber(-4, 10), canopyRng:NextNumber(-16, 16))
+		local width = canopyRng:NextNumber(16, 26)
+		local puffPart = BuildKit.part({
+			name = "AncientBlossom_Crown",
+			size = Vector3.new(1, 1, 1),
+			position = center + Vector3.new(0, trunkHeight, 0) + offset,
+			color = if canopyRng:NextNumber() < 0.7 then Color3.fromRGB(240, 184, 205) else Color3.fromRGB(246, 238, 230),
+			material = Enum.Material.Grass,
+			canCollide = false,
+			castShadow = false,
+			parent = parent,
+		})
+		local mesh = Instance.new("SpecialMesh")
+		mesh.MeshType = Enum.MeshType.Sphere
+		mesh.Scale = Vector3.new(width, width * 0.6, width)
+		mesh.Parent = puffPart
+	end
+	-- Falling petals, sparse.
+	local petalAnchor = BuildKit.part({
+		name = "AncientBlossom_Petals",
+		size = Vector3.new(1, 1, 1),
+		position = center + Vector3.new(0, trunkHeight - 6, 0),
+		transparency = 1,
+		canCollide = false,
+		parent = parent,
+	})
+	local petals = Instance.new("ParticleEmitter")
+	petals.Rate = 3
+	petals.Lifetime = NumberRange.new(4, 7)
+	petals.Speed = NumberRange.new(1, 2)
+	petals.Acceleration = Vector3.new(1.2, -2.4, 0.6)
+	petals.Size = NumberSequence.new(0.5, 0.3)
+	petals.Color = ColorSequence.new(Color3.fromRGB(244, 196, 212))
+	petals.Transparency = NumberSequence.new(0.2, 1)
+	petals.Parent = petalAnchor
+	-- A circle of standing stones around the trunk, and mats within.
+	for index = 1, 7 do
+		local angle = index / 7 * math.pi * 2
+		BuildKit.part({
+			name = "BlossomCircle_Stone",
+			size = Vector3.new(2.6, 5 + (index % 3), 1.8),
+			cframe = CFrame.new(center + Vector3.new(math.cos(angle) * 20, 2.4, math.sin(angle) * 20))
+				* CFrame.Angles(0, -angle, math.rad((index % 3 - 1) * 5)),
+			color = STONE,
+			material = Enum.Material.Slate,
+			parent = parent,
+		})
+	end
+	mats(parent, center + Vector3.new(0, 0.2, 0), 5, 12)
+	local trunk = parent:FindFirstChild("AncientBlossom_Trunk")
+	if trunk and trunk:IsA("BasePart") then
+		BuildKit.billboard(trunk, "The Elder Blossom. It has shed a thousand springs and kept none.", Color3.fromRGB(240, 190, 205), 22, 2.4, Vector3.new(0, 30, 0))
+	end
+	markZone(parent, center, 34, 2, "The Elder Blossom")
+end
+
+function Sacred.build(parent: Instance)
+	buildPoolDeck(parent)
+	buildBambooGrove(parent)
+	buildBlossomHill(parent)
+	-- The summit was always the fourth site; now it is marked as one.
+	markZone(parent, Vector3.new(Island.NORTH_PEAK.X, Island.NORTH_PEAK_TOP, Island.NORTH_PEAK.Z + 44), 42, 3, "The Summit of Heavenpillar")
+end
+
+return Sacred
+]]></string>
+            </Properties>
+          </Item>
+          <Item class="ModuleScript" referent="40">
             <Properties>
               <string name="Name">Underworld</string>
               <string name="Source"><![CDATA[--!strict
@@ -7509,7 +8554,7 @@ return Underworld
             </Properties>
           </Item>
         </Item>
-        <Item class="ModuleScript" referent="40">
+        <Item class="ModuleScript" referent="41">
           <Properties>
             <string name="Name">WorldBuilder</string>
             <string name="Source"><![CDATA[--!strict
@@ -7524,6 +8569,7 @@ local Overworld = require(script.Parent.World.Overworld)
 local Cities = require(script.Parent.World.Cities)
 local Flora = require(script.Parent.World.Flora)
 local Underworld = require(script.Parent.World.Underworld)
+local Sacred = require(script.Parent.World.Sacred)
 
 local WorldBuilder = {}
 
@@ -7539,6 +8585,7 @@ function WorldBuilder.Init()
 	Cities.build(world)
 	Flora.build(world)
 	Underworld.build(world)
+	Sacred.build(world)
 
 	world.Parent = workspace
 	print("[WorldBuilder] The island stands: three realms, four cities, one mountain.")
@@ -7551,22 +8598,22 @@ return WorldBuilder
       </Item>
     </Item>
   </Item>
-  <Item class="SoundService" referent="41">
+  <Item class="SoundService" referent="42">
     <Properties>
       <string name="Name">SoundService</string>
       <bool name="RespectFilteringEnabled">true</bool>
     </Properties>
   </Item>
-  <Item class="StarterPlayer" referent="42">
+  <Item class="StarterPlayer" referent="43">
     <Properties>
       <string name="Name">StarterPlayer</string>
       <float name="CameraMaxZoomDistance">800</float>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="43">
+    <Item class="StarterPlayerScripts" referent="44">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="LocalScript" referent="44">
+      <Item class="LocalScript" referent="45">
         <Properties>
           <string name="Name">Client</string>
           <string name="Source"><![CDATA[--!strict
@@ -7617,11 +8664,11 @@ end
 print("[Client] All controllers started")
 ]]></string>
         </Properties>
-        <Item class="Folder" referent="45">
+        <Item class="Folder" referent="46">
           <Properties>
             <string name="Name">Controllers</string>
           </Properties>
-          <Item class="ModuleScript" referent="46">
+          <Item class="ModuleScript" referent="47">
             <Properties>
               <string name="Name">CraftingController</string>
               <string name="Source"><![CDATA[--!strict
@@ -7739,7 +8786,7 @@ return CraftingController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="47">
+          <Item class="ModuleScript" referent="48">
             <Properties>
               <string name="Name">DestinyController</string>
               <string name="Source"><![CDATA[--!strict
@@ -7988,7 +9035,7 @@ return DestinyController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="48">
+          <Item class="ModuleScript" referent="49">
             <Properties>
               <string name="Name">DialogueController</string>
               <string name="Source"><![CDATA[--!strict
@@ -8096,7 +9143,7 @@ return DialogueController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="49">
+          <Item class="ModuleScript" referent="50">
             <Properties>
               <string name="Name">HudController</string>
               <string name="Source"><![CDATA[--!strict
@@ -8506,7 +9553,7 @@ return HudController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="50">
+          <Item class="ModuleScript" referent="51">
             <Properties>
               <string name="Name">InventoryController</string>
               <string name="Source"><![CDATA[--!strict
@@ -8659,7 +9706,7 @@ return InventoryController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="51">
+          <Item class="ModuleScript" referent="52">
             <Properties>
               <string name="Name">MeditateController</string>
               <string name="Source"><![CDATA[--!strict
@@ -8733,7 +9780,7 @@ return MeditateController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="52">
+          <Item class="ModuleScript" referent="53">
             <Properties>
               <string name="Name">MenuController</string>
               <string name="Source"><![CDATA[--!strict
@@ -8995,7 +10042,7 @@ return MenuController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="53">
+          <Item class="ModuleScript" referent="54">
             <Properties>
               <string name="Name">MovementController</string>
               <string name="Source"><![CDATA[--!strict
@@ -9293,7 +10340,7 @@ return MovementController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="54">
+          <Item class="ModuleScript" referent="55">
             <Properties>
               <string name="Name">SectController</string>
               <string name="Source"><![CDATA[--!strict
@@ -9550,7 +10597,7 @@ return SectController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="55">
+          <Item class="ModuleScript" referent="56">
             <Properties>
               <string name="Name">TechniqueController</string>
               <string name="Source"><![CDATA[--!strict
@@ -9803,7 +10850,7 @@ return TechniqueController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="56">
+          <Item class="ModuleScript" referent="57">
             <Properties>
               <string name="Name">TechniqueForgeController</string>
               <string name="Source"><![CDATA[--!strict
@@ -10138,7 +11185,7 @@ return TechniqueForgeController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="57">
+          <Item class="ModuleScript" referent="58">
             <Properties>
               <string name="Name">UpdatesController</string>
               <string name="Source"><![CDATA[--!strict
@@ -10190,11 +11237,11 @@ return UpdatesController
             </Properties>
           </Item>
         </Item>
-        <Item class="Folder" referent="58">
+        <Item class="Folder" referent="59">
           <Properties>
             <string name="Name">Modules</string>
           </Properties>
-          <Item class="ModuleScript" referent="59">
+          <Item class="ModuleScript" referent="60">
             <Properties>
               <string name="Name">ClientSettings</string>
               <string name="Source"><![CDATA[--!strict
@@ -10232,7 +11279,7 @@ return ClientSettings
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="60">
+          <Item class="ModuleScript" referent="61">
             <Properties>
               <string name="Name">ClientState</string>
               <string name="Source"><![CDATA[--!strict
@@ -10359,7 +11406,7 @@ return ClientState
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="61">
+          <Item class="ModuleScript" referent="62">
             <Properties>
               <string name="Name">Panels</string>
               <string name="Source"><![CDATA[--!strict
@@ -10401,7 +11448,7 @@ return Panels
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="62">
+          <Item class="ModuleScript" referent="63">
             <Properties>
               <string name="Name">UiKit</string>
               <string name="Source"><![CDATA[--!strict
@@ -10726,7 +11773,7 @@ return UiKit
       </Item>
     </Item>
   </Item>
-  <Item class="Workspace" referent="63">
+  <Item class="Workspace" referent="64">
     <Properties>
       <string name="Name">Workspace</string>
       <bool name="FilteringEnabled">true</bool>

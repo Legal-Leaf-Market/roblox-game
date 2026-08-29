@@ -167,12 +167,16 @@ local function applyMail(userId: number, data: Types.PlayerData)
 	local mail: Mail? = nil
 	local dataStore = getMailStore()
 	if dataStore then
+		-- Claim atomically: one UpdateAsync reads the mail and leaves an
+		-- empty box behind, so two servers loading this master at once
+		-- cannot both apply (or lose) the same credit.
 		local ok, result = pcall(function()
-			local value = dataStore:GetAsync(KEY_PREFIX .. userId)
-			if value ~= nil then
-				dataStore:RemoveAsync(KEY_PREFIX .. userId)
-			end
-			return value
+			local claimed: unknown = nil
+			dataStore:UpdateAsync(KEY_PREFIX .. userId, function(existing)
+				claimed = existing
+				return { bonus = 0, removals = {} }
+			end)
+			return claimed
 		end)
 		if ok and typeof(result) == "table" then
 			mail = result :: Mail

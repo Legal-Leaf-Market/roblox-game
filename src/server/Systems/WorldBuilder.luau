@@ -10,6 +10,7 @@ local Overworld = require(script.Parent.World.Overworld)
 local Cities = require(script.Parent.World.Cities)
 local Flora = require(script.Parent.World.Flora)
 local Underworld = require(script.Parent.World.Underworld)
+local Sacred = require(script.Parent.World.Sacred)
 
 local WorldBuilder = {}
 
@@ -25,6 +26,7 @@ function WorldBuilder.Init()
 	Cities.build(world)
 	Flora.build(world)
 	Underworld.build(world)
+	Sacred.build(world)
 
 	world.Parent = workspace
 	print("[WorldBuilder] The island stands: three realms, four cities, one mountain.")
