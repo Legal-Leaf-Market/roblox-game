@@ -1,0 +1,9 @@
+# Rojo build artifacts (the place file is generated, never committed)
+*.rbxl
+*.rbxlx
+*.rbxm
+*.rbxmx
+sourcemap.json
+
+# Editor/OS noise
+.DS_Store
