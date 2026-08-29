@@ -19,9 +19,9 @@ local Cities = {}
 
 -- City centers (ground level unless noted). Flora and roads read these.
 Cities.POSITIONS = table.freeze({
-	orthodox = Vector3.new(0, 0, -640),
-	demonic = Vector3.new(-600, 0, 330),
-	unorthodox = Vector3.new(620, 0, 240),
+	orthodox = Vector3.new(0, 0, -2560),
+	demonic = Vector3.new(-2400, 0, 1320),
+	unorthodox = Vector3.new(2480, 0, 960),
 	central = Vector3.new(0, Island.VALLEY_Y, 0),
 })
 
@@ -31,6 +31,7 @@ type CityTheme = {
 	wall: Color3,
 	wallMaterial: Enum.Material,
 	roof: Color3,
+	roofMaterial: Enum.Material?, -- nil = tile (Slate); Grass = thatch
 	plaster: Color3,
 	floor: Color3,
 	floorMaterial: Enum.Material,
@@ -58,7 +59,8 @@ local THEMES: { [string]: CityTheme } = {
 	unorthodox = {
 		wall = Color3.fromRGB(226, 222, 210),
 		wallMaterial = Enum.Material.Slate,
-		roof = Color3.fromRGB(61, 90, 62), -- tile roof green
+		roof = Color3.fromRGB(185, 154, 74), -- thatch, like the reference
+		roofMaterial = Enum.Material.Grass,
 		plaster = Color3.fromRGB(237, 234, 224),
 		floor = Color3.fromRGB(206, 202, 190),
 		floorMaterial = Enum.Material.Cobblestone,
@@ -75,12 +77,12 @@ local THEMES: { [string]: CityTheme } = {
 
 -- A circular rampart with a gate gap facing `gateAngle` (radians from +X).
 local function ringWall(parent: Instance, center: Vector3, radius: number, height: number, theme: CityTheme, gateAngle: number)
-	local segments = 22
+	local segments = 30
 	local segmentLength = 2 * math.pi * radius / segments + 3
 	for index = 1, segments do
 		local angle = index / segments * math.pi * 2
 		local delta = math.atan2(math.sin(angle - gateAngle), math.cos(angle - gateAngle))
-		if math.abs(delta) < math.rad(16) then
+		if math.abs(delta) < math.rad(10) then
 			continue -- the gate opening
 		end
 		local position = center + Vector3.new(math.cos(angle) * radius, height / 2, math.sin(angle) * radius)
@@ -131,27 +133,27 @@ local function buildCity(parent: Instance, spec: CitySpec)
 
 	-- Floor disc and walls.
 	BuildKit.cylinder(city, "Plaza", center + Vector3.new(0, 0.5, 0), 1, radius * 2, theme.floor, theme.floorMaterial)
-	ringWall(city, center, radius, 16, theme, gateAngle)
+	ringWall(city, center, radius, 24, theme, gateAngle)
 
 	-- Paifang at the gate.
 	local gatePos = center + toCenter * (radius + 10)
-	local sign = BuildKit.paifang(city, Vector3.new(gatePos.X, center.Y, gatePos.Z), toCenter, 34, TIMBER, theme.roof)
+	local sign = BuildKit.paifang(city, Vector3.new(gatePos.X, center.Y, gatePos.Z), toCenter, 44, TIMBER, theme.roof)
 	BuildKit.billboard(sign, `{spec.name}\n{spec.subtitle}`, spec.accent, 18, 3, Vector3.new(0, 4, 0))
 
 	-- Pagoda homes on an inner ring, skipping the gate and shrine bearings.
-	for index = 1, 8 do
-		local angle = index / 8 * math.pi * 2
+	for index = 1, 12 do
+		local angle = index / 12 * math.pi * 2
 		local gateDelta = math.atan2(math.sin(angle - gateAngle), math.cos(angle - gateAngle))
 		if math.abs(gateDelta) < math.rad(30) or math.abs(gateDelta) > math.rad(150) then
 			continue
 		end
 		local homeCenter = center + Vector3.new(math.cos(angle) * radius * 0.62, 0, math.sin(angle) * radius * 0.62)
-		BuildKit.pagodaHouse(city, homeCenter, 22, 18, 2, theme.plaster, TIMBER, theme.roof)
+		BuildKit.pagodaHouse(city, homeCenter, 36, 28, 2, theme.plaster, TIMBER, theme.roof, theme.roofMaterial)
 	end
 
 	-- Sect hall tower opposite the gate, shrine (or sign) before it.
 	local backDir = -toCenter
-	BuildKit.pagodaHouse(city, center + backDir * radius * 0.55, 22, 22, 3, theme.plaster, TIMBER, theme.roof)
+	BuildKit.pagodaHouse(city, center + backDir * radius * 0.55, 44, 44, 4, theme.plaster, TIMBER, theme.roof, theme.roofMaterial)
 
 	local shrinePos = center + backDir * radius * 0.22
 	if pathDef then
@@ -169,7 +171,7 @@ local function buildCity(parent: Instance, spec: CitySpec)
 		BuildKit.prompt(monolith, "Pledge", pathDef.name, 2, nil)
 		BuildKit.billboard(monolith, `Shrine of the {pathDef.name}\n"{pathDef.blurb}"`, spec.accent, 22, 3.4, Vector3.new(0, 9, 0))
 		BuildKit.pointLight(dais, spec.accent, 2, 30)
-		BuildKit.pavilion(city, shrinePos, 18, TIMBER, theme.roof)
+		BuildKit.pavilion(city, shrinePos, 24, TIMBER, theme.roof)
 	else
 		local waypost = BuildKit.part({
 			name = "Waypost",
@@ -187,8 +189,8 @@ local function buildCity(parent: Instance, spec: CitySpec)
 	BuildKit.spawnLocation(city, shrinePos + toCenter * 18 + Vector3.new(0, 1, 0), spawnColor, false)
 
 	local lanternRed = Color3.fromRGB(210, 60, 45)
-	for index = 1, 6 do
-		local angle = index / 6 * math.pi * 2 + 0.3
+	for index = 1, 10 do
+		local angle = index / 10 * math.pi * 2 + 0.3
 		local post = BuildKit.part({
 			name = "Lantern",
 			size = Vector3.new(1, 11, 1),
@@ -213,7 +215,7 @@ local function buildCity(parent: Instance, spec: CitySpec)
 
 	for i = -1, 1 do
 		local side = Vector3.new(-toCenter.Z, 0, toCenter.X)
-		BuildKit.trainingDummy(city, Vector3.new(gatePos.X, center.Y, gatePos.Z) + side * (i * 12) + toCenter * 18)
+		BuildKit.trainingDummy(city, Vector3.new(gatePos.X, center.Y, gatePos.Z) + side * (i * 16) + toCenter * 26)
 	end
 end
 
@@ -221,28 +223,28 @@ function Cities.build(parent: Instance)
 	local specs: { CitySpec } = {
 		{
 			key = "orthodox",
-			radius = 95,
+			radius = 260,
 			name = Paths.orthodox.cityName,
 			subtitle = Paths.orthodox.name,
 			accent = Paths.orthodox.accentColor,
 		},
 		{
 			key = "demonic",
-			radius = 95,
+			radius = 260,
 			name = Paths.demonic.cityName,
 			subtitle = Paths.demonic.name,
 			accent = Paths.demonic.accentColor,
 		},
 		{
 			key = "unorthodox",
-			radius = 95,
+			radius = 260,
 			name = Paths.unorthodox.cityName,
 			subtitle = Paths.unorthodox.name,
 			accent = Paths.unorthodox.accentColor,
 		},
 		{
 			key = "central",
-			radius = 105,
+			radius = 330,
 			name = "Cloudrest",
 			subtitle = "The Free City",
 			accent = Color3.fromRGB(235, 230, 215),

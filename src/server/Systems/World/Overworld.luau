@@ -16,7 +16,7 @@ local Overworld = {}
 -- The mine shaft opening south of the crater (Underworld builds against it;
 -- Island carves the terrain hollow around it).
 Overworld.GROUND_TOP = 0
-Overworld.HOLE = { x1 = -15, x2 = 15, z1 = 240, z2 = 300 }
+Overworld.HOLE = { x1 = -15, x2 = 15, z1 = 930, z2 = 990 }
 
 local ROCK_DARK = Color3.fromRGB(92, 88, 90)
 local ROAD_COLOR = Color3.fromRGB(203, 184, 148) -- the map's tan paths
@@ -51,29 +51,30 @@ end
 local function buildRoads(parent: Instance)
 	-- Inner ring skirts the mountains; outer ring laces the island, like
 	-- the reference's web of tan paths.
-	ringRoad(parent, 320, 24)
-	ringRoad(parent, 620, 30)
+	ringRoad(parent, 1280, 40)
+	ringRoad(parent, 2480, 56)
 
 	-- Spokes from the inner ring out to each biome city's gate.
 	for _, key in { "orthodox", "demonic", "unorthodox" } do
 		local center = Cities.POSITIONS[key]
 		local direction = Vector3.new(center.X, 0, center.Z).Unit
-		road(parent, direction * 320, Vector3.new(center.X, 0, center.Z) - direction * 100, 9)
+		road(parent, direction * 1280, Vector3.new(center.X, 0, center.Z) - direction * 380, 12)
 	end
 
-	-- Southern pass: stair landing to the mine gate and on to the ring.
-	road(parent, Vector3.new(0, 0, 228), Vector3.new(0, 0, 320), 9)
+	-- Southern pass: city gate to the stair, stair landing to mine gate and ring.
+	road(parent, Vector3.new(0, Island.VALLEY_Y, 345), Vector3.new(0, Island.VALLEY_Y, 600), 14)
+	road(parent, Vector3.new(0, 0, 920), Vector3.new(0, 0, 1280), 12)
 
 	-- Wooden bridges where the spokes cross the rivers.
 	local bridges = {
-		{ position = Vector3.new(420, 0, -8), rotation = 20 },
-		{ position = Vector3.new(360, 0, 330), rotation = -30 },
-		{ position = Vector3.new(700, 0, 560), rotation = -35 },
+		{ position = Vector3.new(1680, 0, -40), rotation = 20 },
+		{ position = Vector3.new(1440, 0, 1320), rotation = -30 },
+		{ position = Vector3.new(2800, 0, 2240), rotation = -35 },
 	}
 	for _, bridge in bridges do
 		local deck = BuildKit.part({
 			name = "Bridge",
-			size = Vector3.new(14, 1.5, 40),
+			size = Vector3.new(18, 1.5, 56),
 			cframe = CFrame.new(bridge.position + Vector3.new(0, 1.4, 0)) * CFrame.Angles(0, math.rad(bridge.rotation), 0),
 			color = Color3.fromRGB(133, 100, 68),
 			material = Enum.Material.WoodPlanks,
@@ -82,8 +83,8 @@ local function buildRoads(parent: Instance)
 		for side = -1, 1, 2 do
 			BuildKit.part({
 				name = "Bridge_Rail",
-				size = Vector3.new(1, 2.4, 40),
-				cframe = deck.CFrame * CFrame.new(side * 6.5, 1.9, 0),
+				size = Vector3.new(1, 2.6, 56),
+				cframe = deck.CFrame * CFrame.new(side * 8.5, 2, 0),
 				color = Color3.fromRGB(94, 70, 48),
 				material = Enum.Material.Wood,
 				parent = parent,
@@ -95,15 +96,15 @@ end
 -- --------------------------- The grand stair ----------------------------
 
 local function buildCraterStair(parent: Instance)
-	local steps = 14
+	local steps = 56
 	local topY = Island.VALLEY_Y
-	local fromZ = 150
-	local toZ = 228
+	local fromZ = 600
+	local toZ = 920
 	for index = 0, steps do
 		local t = index / steps
 		BuildKit.part({
 			name = "GrandStair",
-			size = Vector3.new(26, 2.2, (toZ - fromZ) / steps + 1.5),
+			size = Vector3.new(40, 2.2, (toZ - fromZ) / steps + 1.5),
 			position = Vector3.new(0, topY - t * topY - 0.4, fromZ + t * (toZ - fromZ)),
 			color = STAIR_COLOR,
 			material = Enum.Material.Cobblestone,
@@ -112,8 +113,8 @@ local function buildCraterStair(parent: Instance)
 	end
 	-- Flanking balustrades.
 	for side = -1, 1, 2 do
-		local from = Vector3.new(side * 14, topY + 1, fromZ)
-		local to = Vector3.new(side * 14, 1, toZ)
+		local from = Vector3.new(side * 21, topY + 1, fromZ)
+		local to = Vector3.new(side * 21, 1, toZ)
 		local mid = (from + to) / 2
 		BuildKit.part({
 			name = "GrandStair_Rail",
@@ -159,19 +160,19 @@ local function buildNorthPeak(parent: Instance)
 	-- The dark pagoda from the reference, brooding over the falls.
 	BuildKit.pagodaHouse(parent, summit, 26, 26, 3,
 		Color3.fromRGB(62, 50, 48), Color3.fromRGB(34, 28, 26), Color3.fromRGB(48, 26, 26))
-	local platform = BuildKit.cylinder(parent, "Summit_Platform", summit + Vector3.new(0, 0.5, 24), 1, 26,
+	local platform = BuildKit.cylinder(parent, "Summit_Platform", summit + Vector3.new(0, 0.5, 44), 1, 40,
 		Color3.fromRGB(210, 205, 190), Enum.Material.Marble)
 	BuildKit.billboard(platform, "The Summit of Heavenpillar. Meditate above the falls.", Color3.fromRGB(255, 235, 180), 18, 1.8, Vector3.new(0, 6, 0))
 
 	-- Waterfall dressing: foam at the pool and drifting mist.
-	local poolCenter = Vector3.new(0, Island.VALLEY_Y + 0.4, -112)
-	local foam = BuildKit.cylinder(parent, "Waterfall_Foam", poolCenter, 0.6, 30, Color3.fromRGB(235, 245, 250), Enum.Material.SmoothPlastic)
+	local poolCenter = Vector3.new(0, Island.VALLEY_Y + 0.4, -448)
+	local foam = BuildKit.cylinder(parent, "Waterfall_Foam", poolCenter, 0.6, 56, Color3.fromRGB(235, 245, 250), Enum.Material.SmoothPlastic)
 	foam.Transparency = 0.45
 	foam.CanCollide = false
 	local mistAnchor = BuildKit.part({
 		name = "Waterfall_Mist",
 		size = Vector3.new(1, 1, 1),
-		position = poolCenter + Vector3.new(0, 6, -20),
+		position = poolCenter + Vector3.new(0, 8, -30),
 		transparency = 1,
 		canCollide = false,
 		parent = parent,
@@ -189,19 +190,58 @@ end
 -- -------------------------------- Sky -----------------------------------
 
 local function tuneSky()
-	Lighting.ClockTime = 14.4
-	Lighting.Brightness = 2.4
-	Lighting.EnvironmentDiffuseScale = 0.6
+	-- Golden-hour mood from the reference: warm low sun, heavy haze, bloom
+	-- and sun rays, waving terrain grass.
+	Lighting.ClockTime = 16.2
+	Lighting.Brightness = 2.6
+	Lighting.EnvironmentDiffuseScale = 0.55
 	Lighting.EnvironmentSpecularScale = 0.4
+	Lighting.Ambient = Color3.fromRGB(96, 90, 78)
+	Lighting.OutdoorAmbient = Color3.fromRGB(140, 130, 112)
+	-- The Atmosphere is Roblox's fog: a light, bright wash like the photo.
 	if Lighting:FindFirstChildOfClass("Atmosphere") == nil then
 		local atmosphere = Instance.new("Atmosphere")
-		atmosphere.Density = 0.32
-		atmosphere.Offset = 0.4
-		atmosphere.Color = Color3.fromRGB(199, 199, 214)
-		atmosphere.Decay = Color3.fromRGB(106, 112, 125)
-		atmosphere.Haze = 1.6
+		atmosphere.Density = 0.4
+		atmosphere.Offset = 0.55
+		atmosphere.Color = Color3.fromRGB(224, 216, 200)
+		atmosphere.Decay = Color3.fromRGB(140, 128, 108)
+		atmosphere.Haze = 3
+		atmosphere.Glare = 0.6
 		atmosphere.Parent = Lighting
 	end
+	-- The photo's soft cloud layer, via dynamic clouds.
+	pcall(function()
+		local clouds = workspace.Terrain:FindFirstChildOfClass("Clouds") or Instance.new("Clouds")
+		clouds.Cover = 0.72
+		clouds.Density = 0.4
+		clouds.Color = Color3.fromRGB(235, 230, 220)
+		clouds.Parent = workspace.Terrain
+	end)
+	if Lighting:FindFirstChildOfClass("BloomEffect") == nil then
+		local bloom = Instance.new("BloomEffect")
+		bloom.Intensity = 0.45
+		bloom.Size = 28
+		bloom.Threshold = 1.1
+		bloom.Parent = Lighting
+	end
+	if Lighting:FindFirstChildOfClass("SunRaysEffect") == nil then
+		local rays = Instance.new("SunRaysEffect")
+		rays.Intensity = 0.08
+		rays.Spread = 0.7
+		rays.Parent = Lighting
+	end
+	if Lighting:FindFirstChildOfClass("ColorCorrectionEffect") == nil then
+		local grade = Instance.new("ColorCorrectionEffect")
+		grade.Contrast = 0.06
+		grade.Saturation = 0.06
+		grade.TintColor = Color3.fromRGB(255, 246, 228)
+		grade.Parent = Lighting
+	end
+	-- Animated grass blades on Grass terrain (the reference's waving field).
+	pcall(function()
+		workspace.Terrain.Decoration = true;
+		(workspace.Terrain :: any).GrassLength = 0.8
+	end)
 end
 
 function Overworld.build(parent: Instance)

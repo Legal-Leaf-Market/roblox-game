@@ -22,9 +22,9 @@ local STONE = Color3.fromRGB(76, 72, 78)
 local STONE_DARK = Color3.fromRGB(58, 55, 62)
 
 -- Mining Hall interior bounds
-local HALL = { x1 = -90, x2 = 90, z1 = 300, z2 = 460 }
+local HALL = { x1 = -90, x2 = 90, z1 = 990, z2 = 1150 }
 -- Deepforge Hall interior bounds
-local FORGE_HALL = { x1 = -70, x2 = 70, z1 = 460, z2 = 600 }
+local FORGE_HALL = { x1 = -70, x2 = 70, z1 = 1150, z2 = 1290 }
 local DOOR_WIDTH = 24
 
 local wallHeight = CEILING_Y - FLOOR_Y
@@ -118,8 +118,8 @@ local function buildMiningHall(parent: Instance)
 	end
 
 	-- A pair of dummies so miners can practice between veins.
-	BuildKit.trainingDummy(parent, Vector3.new(-60, FLOOR_Y, 320))
-	BuildKit.trainingDummy(parent, Vector3.new(60, FLOOR_Y, 320))
+	BuildKit.trainingDummy(parent, Vector3.new(-60, FLOOR_Y, 1010))
+	BuildKit.trainingDummy(parent, Vector3.new(60, FLOOR_Y, 1010))
 end
 
 local function buildDeepforgeHall(parent: Instance)
@@ -140,7 +140,7 @@ local function buildDeepforgeHall(parent: Instance)
 	BuildKit.part({
 		name = "Forge_Furnace",
 		size = Vector3.new(10, 12, 10),
-		position = Vector3.new(-24, FLOOR_Y + 6, 560),
+		position = Vector3.new(-24, FLOOR_Y + 6, 1250),
 		color = Color3.fromRGB(50, 46, 52),
 		material = Enum.Material.Basalt,
 		parent = parent,
@@ -148,7 +148,7 @@ local function buildDeepforgeHall(parent: Instance)
 	local maw = BuildKit.part({
 		name = "Forge_Maw",
 		size = Vector3.new(6, 5, 1),
-		position = Vector3.new(-24, FLOOR_Y + 4, 554.6),
+		position = Vector3.new(-24, FLOOR_Y + 4, 1244.6),
 		color = Color3.fromRGB(255, 120, 40),
 		material = Enum.Material.Neon,
 		canCollide = false,
@@ -163,19 +163,19 @@ local function buildDeepforgeHall(parent: Instance)
 	local anvil = BuildKit.part({
 		name = "SpiritForge_Anvil",
 		size = Vector3.new(6, 3.5, 3),
-		position = Vector3.new(-10, FLOOR_Y + 2.5, 552),
+		position = Vector3.new(-10, FLOOR_Y + 2.5, 1242),
 		color = Color3.fromRGB(120, 124, 136),
 		material = Enum.Material.Metal,
 		parent = parent,
 	})
 	BuildKit.prompt(anvil, "Craft", "Spirit Forge", 0.5, "ForgePrompt")
 	BuildKit.billboard(anvil, "The Spirit Forge", Color3.fromRGB(255, 180, 90), 12, 1.8, Vector3.new(0, 4, 0))
-	BuildKit.safeZone(parent, Vector3.new(-14, FLOOR_Y, 556), 45)
+	BuildKit.safeZone(parent, Vector3.new(-14, FLOOR_Y, 1246), 45)
 
 	-- ---------------------- Grandmaster Khadun ---------------------------
 	local dwarf = Instance.new("Model")
 	dwarf.Name = "GrandmasterKhadun"
-	local base = Vector3.new(-16, FLOOR_Y, 545)
+	local base = Vector3.new(-16, FLOOR_Y, 1235)
 	local skin = Color3.fromRGB(224, 172, 128)
 	local body = BuildKit.part({
 		name = "Body",
@@ -236,7 +236,7 @@ local function scatterOre(parent: Instance)
 			local x = rng:NextNumber(bounds.x1 + 12, bounds.x2 - 12)
 			local z = rng:NextNumber(bounds.z1 + 14, bounds.z2 - 14)
 			-- Keep the forge corner clear for the dwarf's floor space.
-			if z > 530 and x < 5 then
+			if z > 1220 and x < 5 then
 				x += 40
 			end
 			BuildKit.oreNode(parent, Vector3.new(x, FLOOR_Y, z), ore.id, ore.name, ore.color)

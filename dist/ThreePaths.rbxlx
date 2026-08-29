@@ -1510,6 +1510,16 @@ export type UpdateEntry = {
 
 local Updates: { UpdateEntry } = {
 	{
+		version = "0.4.1",
+		date = "2026-08-29",
+		title = "The World Grows Vast",
+		notes = {
+			"The island is now four times larger: peaks past 700 studs, a crater half a kilometer wide, real journeys between realms.",
+			"Buildings rebuilt at grand scale, trees tower overhead, giant bamboo in the east.",
+			"Golden-hour light, drifting clouds, soft fog, sun rays, and waving grass across the fields.",
+		},
+	},
+	{
 		version = "0.4.0",
 		date = "2026-08-29",
 		title = "The Island of Three Realms",
@@ -5298,20 +5308,21 @@ end
 
 -- A Chinese tiled roof layer: flat cap plus four outward-sloping eave
 -- wedges hanging past the walls. `y` is the underside of the roof.
-function BuildKit.chineseRoof(parent: Instance, center: Vector3, width: number, depth: number, y: number, roofColor: Color3)
-	local overhang = 3.5
+function BuildKit.chineseRoof(parent: Instance, center: Vector3, width: number, depth: number, y: number, roofColor: Color3, roofMaterial: Enum.Material?)
+	local material = roofMaterial or Enum.Material.Slate
+	local overhang = 6
 	local capW = width + overhang * 2
 	local capD = depth + overhang * 2
 	BuildKit.part({
 		name = "Roof_Cap",
-		size = Vector3.new(capW, 1, capD),
+		size = Vector3.new(capW, 1.5, capD),
 		position = Vector3.new(center.X, y + 0.5, center.Z),
 		color = roofColor,
-		material = Enum.Material.Slate,
+		material = material,
 		parent = parent,
 	})
 	-- Eaves on each side, sloping down and out.
-	local eaveH = 1.8
+	local eaveH = 2.6
 	local sides = {
 		{ dir = Vector3.new(0, 0, 1), len = capW },
 		{ dir = Vector3.new(0, 0, -1), len = capW },
@@ -5320,13 +5331,13 @@ function BuildKit.chineseRoof(parent: Instance, center: Vector3, width: number, 
 	}
 	for _, side in sides do
 		local edge = Vector3.new(center.X, y + 0.4, center.Z)
-			+ side.dir * (if side.dir.Z ~= 0 then capD / 2 + 1.4 else capW / 2 + 1.4)
+			+ side.dir * (if side.dir.Z ~= 0 then capD / 2 + 2.2 else capW / 2 + 2.2)
 		BuildKit.wedgePart({
 			name = "Roof_Eave",
-			size = Vector3.new(side.len + 2, eaveH, 3),
+			size = Vector3.new(side.len + 2, eaveH, 5),
 			cframe = CFrame.lookAt(edge, edge + side.dir) * CFrame.Angles(0, math.pi, 0),
 			color = roofColor,
-			material = Enum.Material.Slate,
+			material = material,
 			canCollide = false,
 			parent = parent,
 		})
@@ -5338,18 +5349,39 @@ function BuildKit.chineseRoof(parent: Instance, center: Vector3, width: number, 
 		size = if ridgeAlongX then Vector3.new(width * 0.7, 1, 1.6) else Vector3.new(1.6, 1, depth * 0.7),
 		position = Vector3.new(center.X, y + 1.4, center.Z),
 		color = roofColor,
-		material = Enum.Material.Slate,
+		material = material,
 		parent = parent,
 	})
 end
 
 -- A multi-story pagoda-style house: plaster walls, timber corner posts,
 -- a tiled roof over every floor, each floor slightly narrower.
-function BuildKit.pagodaHouse(parent: Instance, center: Vector3, width: number, depth: number, floors: number, plaster: Color3, timber: Color3, roofColor: Color3)
-	local floorHeight = 9
+function BuildKit.pagodaHouse(parent: Instance, center: Vector3, width: number, depth: number, floors: number, plaster: Color3, timber: Color3, roofColor: Color3, roofMaterial: Enum.Material?)
+	local floorHeight = 14
 	local y = center.Y
 	local w, d = width, depth
-	for _ = 1, floors do
+
+	-- Raised plank deck with front steps, like the reference houses.
+	BuildKit.part({
+		name = "House_Deck",
+		size = Vector3.new(width + 8, 1.4, depth + 8),
+		position = Vector3.new(center.X, y + 0.7, center.Z),
+		color = Color3.fromRGB(110, 82, 55),
+		material = Enum.Material.WoodPlanks,
+		parent = parent,
+	})
+	for stepIndex = 1, 3 do
+		BuildKit.part({
+			name = "House_Step",
+			size = Vector3.new(8, 0.5, 1.6),
+			position = Vector3.new(center.X, y + 1.4 - stepIndex * 0.45, center.Z + depth / 2 + 4 + stepIndex * 1.5),
+			color = Color3.fromRGB(110, 82, 55),
+			material = Enum.Material.WoodPlanks,
+			parent = parent,
+		})
+	end
+
+	for floor = 1, floors do
 		BuildKit.part({
 			name = "House_Wall",
 			size = Vector3.new(w, floorHeight, d),
@@ -5362,7 +5394,7 @@ function BuildKit.pagodaHouse(parent: Instance, center: Vector3, width: number, 
 			for cz = -1, 1, 2 do
 				BuildKit.part({
 					name = "House_Post",
-					size = Vector3.new(1.2, floorHeight, 1.2),
+					size = Vector3.new(2, floorHeight, 2),
 					position = Vector3.new(center.X + cx * (w / 2), y + floorHeight / 2, center.Z + cz * (d / 2)),
 					color = timber,
 					material = Enum.Material.Wood,
@@ -5370,15 +5402,74 @@ function BuildKit.pagodaHouse(parent: Instance, center: Vector3, width: number, 
 				})
 			end
 		end
-		BuildKit.chineseRoof(parent, Vector3.new(center.X, 0, center.Z), w, d, y + floorHeight, roofColor)
-		y += floorHeight + 1.4
+		-- Dark timber bands framing the floor, top and bottom.
+		for _, bandY in { y + 0.7, y + floorHeight - 0.7 } do
+			BuildKit.part({
+				name = "House_Band",
+				size = Vector3.new(w + 1.2, 1.3, d + 1.2),
+				position = Vector3.new(center.X, bandY, center.Z),
+				color = timber,
+				material = Enum.Material.Wood,
+				parent = parent,
+			})
+		end
+		-- Slatted windows on the front and back faces.
+		for faceSign = -1, 1, 2 do
+			for _, windowX in { -w / 4, w / 4 } do
+				if floor == 1 and faceSign == 1 and math.abs(windowX + w / 4) < 0.01 then
+					continue -- the door takes this bay
+				end
+				local faceZ = center.Z + faceSign * (d / 2 + 0.35)
+				BuildKit.part({
+					name = "House_WindowFrame",
+					size = Vector3.new(5, 6, 0.7),
+					position = Vector3.new(center.X + windowX, y + floorHeight / 2, faceZ),
+					color = timber,
+					material = Enum.Material.Wood,
+					canCollide = false,
+					parent = parent,
+				})
+				BuildKit.part({
+					name = "House_WindowPanel",
+					size = Vector3.new(3.8, 4.8, 0.5),
+					position = Vector3.new(center.X + windowX, y + floorHeight / 2, faceZ + faceSign * 0.15),
+					color = Color3.fromRGB(216, 203, 170),
+					material = Enum.Material.WoodPlanks,
+					canCollide = false,
+					parent = parent,
+				})
+			end
+		end
+		-- Ground-floor door on the front face.
+		if floor == 1 then
+			BuildKit.part({
+				name = "House_DoorFrame",
+				size = Vector3.new(7.5, 10.5, 0.8),
+				position = Vector3.new(center.X - w / 4, y + 5.25 + 1.4, center.Z + d / 2 + 0.35),
+				color = timber,
+				material = Enum.Material.Wood,
+				canCollide = false,
+				parent = parent,
+			})
+			BuildKit.part({
+				name = "House_Door",
+				size = Vector3.new(6, 9.4, 0.6),
+				position = Vector3.new(center.X - w / 4, y + 4.7 + 1.4, center.Z + d / 2 + 0.5),
+				color = Color3.fromRGB(66, 47, 33),
+				material = Enum.Material.WoodPlanks,
+				canCollide = false,
+				parent = parent,
+			})
+		end
+		BuildKit.chineseRoof(parent, Vector3.new(center.X, 0, center.Z), w, d, y + floorHeight, roofColor, roofMaterial)
+		y += floorHeight + 2
 		w *= 0.78
 		d *= 0.78
 	end
 	-- Finial at the peak.
 	BuildKit.part({
 		name = "House_Finial",
-		size = Vector3.new(0.9, 2.4, 0.9),
+		size = Vector3.new(1.3, 3.6, 1.3),
 		position = Vector3.new(center.X, y + 1.2, center.Z),
 		color = Color3.fromRGB(212, 175, 55),
 		material = Enum.Material.Metal,
@@ -5391,11 +5482,11 @@ end
 -- Returns the signboard part so callers can hang a label on it.
 function BuildKit.paifang(parent: Instance, center: Vector3, facing: Vector3, width: number, timber: Color3, roofColor: Color3): Part
 	local side = Vector3.new(-facing.Z, 0, facing.X)
-	local pillarHeight = 17
+	local pillarHeight = 26
 	for s = -1, 1, 2 do
 		BuildKit.part({
 			name = "Paifang_Pillar",
-			size = Vector3.new(2, pillarHeight, 2),
+			size = Vector3.new(3, pillarHeight, 3),
 			position = center + side * (s * width / 2) + Vector3.new(0, pillarHeight / 2, 0),
 			color = timber,
 			material = Enum.Material.Wood,
@@ -5405,7 +5496,7 @@ function BuildKit.paifang(parent: Instance, center: Vector3, facing: Vector3, wi
 	local lintelCF = CFrame.lookAt(center + Vector3.new(0, pillarHeight - 1, 0), center + Vector3.new(0, pillarHeight - 1, 0) + facing)
 	BuildKit.part({
 		name = "Paifang_Lintel",
-		size = Vector3.new(width + 5, 1.6, 2.4),
+		size = Vector3.new(width + 7, 2.4, 3.2),
 		cframe = lintelCF,
 		color = timber,
 		material = Enum.Material.Wood,
@@ -5413,26 +5504,26 @@ function BuildKit.paifang(parent: Instance, center: Vector3, facing: Vector3, wi
 	})
 	local sign = BuildKit.part({
 		name = "Paifang_Sign",
-		size = Vector3.new(width * 0.55, 3, 1.2),
-		cframe = lintelCF * CFrame.new(0, 2.4, 0),
+		size = Vector3.new(width * 0.55, 4.5, 1.6),
+		cframe = lintelCF * CFrame.new(0, 3.6, 0),
 		color = Color3.fromRGB(32, 28, 26),
 		material = Enum.Material.Wood,
 		parent = parent,
 	})
 	-- Little roof riding the top.
 	local roofCenter = center + Vector3.new(0, 0, 0)
-	BuildKit.chineseRoof(parent, roofCenter, width * 0.7, 4, pillarHeight + 3.2, roofColor)
+	BuildKit.chineseRoof(parent, roofCenter, width * 0.7, 6, pillarHeight + 4.6, roofColor)
 	return sign
 end
 
 -- An open pavilion: four posts and a tiered roof, no walls. Shelters shrines.
 function BuildKit.pavilion(parent: Instance, center: Vector3, size: number, timber: Color3, roofColor: Color3)
-	local postHeight = 13
+	local postHeight = 20
 	for cx = -1, 1, 2 do
 		for cz = -1, 1, 2 do
 			BuildKit.part({
 				name = "Pavilion_Post",
-				size = Vector3.new(1.4, postHeight, 1.4),
+				size = Vector3.new(2, postHeight, 2),
 				position = center + Vector3.new(cx * size / 2, postHeight / 2, cz * size / 2),
 				color = timber,
 				material = Enum.Material.Wood,
@@ -5441,7 +5532,7 @@ function BuildKit.pavilion(parent: Instance, center: Vector3, size: number, timb
 		end
 	end
 	BuildKit.chineseRoof(parent, Vector3.new(center.X, 0, center.Z), size + 2, size + 2, center.Y + postHeight, roofColor)
-	BuildKit.chineseRoof(parent, Vector3.new(center.X, 0, center.Z), size * 0.5, size * 0.5, center.Y + postHeight + 3.4, roofColor)
+	BuildKit.chineseRoof(parent, Vector3.new(center.X, 0, center.Z), size * 0.5, size * 0.5, center.Y + postHeight + 4.4, roofColor)
 end
 
 -- Vertical-axis cylinder (Roblox cylinders lie along local X; we stand it up).
@@ -5642,9 +5733,9 @@ local Cities = {}
 
 -- City centers (ground level unless noted). Flora and roads read these.
 Cities.POSITIONS = table.freeze({
-	orthodox = Vector3.new(0, 0, -640),
-	demonic = Vector3.new(-600, 0, 330),
-	unorthodox = Vector3.new(620, 0, 240),
+	orthodox = Vector3.new(0, 0, -2560),
+	demonic = Vector3.new(-2400, 0, 1320),
+	unorthodox = Vector3.new(2480, 0, 960),
 	central = Vector3.new(0, Island.VALLEY_Y, 0),
 })
 
@@ -5654,6 +5745,7 @@ type CityTheme = {
 	wall: Color3,
 	wallMaterial: Enum.Material,
 	roof: Color3,
+	roofMaterial: Enum.Material?, -- nil = tile (Slate); Grass = thatch
 	plaster: Color3,
 	floor: Color3,
 	floorMaterial: Enum.Material,
@@ -5681,7 +5773,8 @@ local THEMES: { [string]: CityTheme } = {
 	unorthodox = {
 		wall = Color3.fromRGB(226, 222, 210),
 		wallMaterial = Enum.Material.Slate,
-		roof = Color3.fromRGB(61, 90, 62), -- tile roof green
+		roof = Color3.fromRGB(185, 154, 74), -- thatch, like the reference
+		roofMaterial = Enum.Material.Grass,
 		plaster = Color3.fromRGB(237, 234, 224),
 		floor = Color3.fromRGB(206, 202, 190),
 		floorMaterial = Enum.Material.Cobblestone,
@@ -5698,12 +5791,12 @@ local THEMES: { [string]: CityTheme } = {
 
 -- A circular rampart with a gate gap facing `gateAngle` (radians from +X).
 local function ringWall(parent: Instance, center: Vector3, radius: number, height: number, theme: CityTheme, gateAngle: number)
-	local segments = 22
+	local segments = 30
 	local segmentLength = 2 * math.pi * radius / segments + 3
 	for index = 1, segments do
 		local angle = index / segments * math.pi * 2
 		local delta = math.atan2(math.sin(angle - gateAngle), math.cos(angle - gateAngle))
-		if math.abs(delta) < math.rad(16) then
+		if math.abs(delta) < math.rad(10) then
 			continue -- the gate opening
 		end
 		local position = center + Vector3.new(math.cos(angle) * radius, height / 2, math.sin(angle) * radius)
@@ -5754,27 +5847,27 @@ local function buildCity(parent: Instance, spec: CitySpec)
 
 	-- Floor disc and walls.
 	BuildKit.cylinder(city, "Plaza", center + Vector3.new(0, 0.5, 0), 1, radius * 2, theme.floor, theme.floorMaterial)
-	ringWall(city, center, radius, 16, theme, gateAngle)
+	ringWall(city, center, radius, 24, theme, gateAngle)
 
 	-- Paifang at the gate.
 	local gatePos = center + toCenter * (radius + 10)
-	local sign = BuildKit.paifang(city, Vector3.new(gatePos.X, center.Y, gatePos.Z), toCenter, 34, TIMBER, theme.roof)
+	local sign = BuildKit.paifang(city, Vector3.new(gatePos.X, center.Y, gatePos.Z), toCenter, 44, TIMBER, theme.roof)
 	BuildKit.billboard(sign, `{spec.name}\n{spec.subtitle}`, spec.accent, 18, 3, Vector3.new(0, 4, 0))
 
 	-- Pagoda homes on an inner ring, skipping the gate and shrine bearings.
-	for index = 1, 8 do
-		local angle = index / 8 * math.pi * 2
+	for index = 1, 12 do
+		local angle = index / 12 * math.pi * 2
 		local gateDelta = math.atan2(math.sin(angle - gateAngle), math.cos(angle - gateAngle))
 		if math.abs(gateDelta) < math.rad(30) or math.abs(gateDelta) > math.rad(150) then
 			continue
 		end
 		local homeCenter = center + Vector3.new(math.cos(angle) * radius * 0.62, 0, math.sin(angle) * radius * 0.62)
-		BuildKit.pagodaHouse(city, homeCenter, 22, 18, 2, theme.plaster, TIMBER, theme.roof)
+		BuildKit.pagodaHouse(city, homeCenter, 36, 28, 2, theme.plaster, TIMBER, theme.roof, theme.roofMaterial)
 	end
 
 	-- Sect hall tower opposite the gate, shrine (or sign) before it.
 	local backDir = -toCenter
-	BuildKit.pagodaHouse(city, center + backDir * radius * 0.55, 22, 22, 3, theme.plaster, TIMBER, theme.roof)
+	BuildKit.pagodaHouse(city, center + backDir * radius * 0.55, 44, 44, 4, theme.plaster, TIMBER, theme.roof, theme.roofMaterial)
 
 	local shrinePos = center + backDir * radius * 0.22
 	if pathDef then
@@ -5792,7 +5885,7 @@ local function buildCity(parent: Instance, spec: CitySpec)
 		BuildKit.prompt(monolith, "Pledge", pathDef.name, 2, nil)
 		BuildKit.billboard(monolith, `Shrine of the {pathDef.name}\n"{pathDef.blurb}"`, spec.accent, 22, 3.4, Vector3.new(0, 9, 0))
 		BuildKit.pointLight(dais, spec.accent, 2, 30)
-		BuildKit.pavilion(city, shrinePos, 18, TIMBER, theme.roof)
+		BuildKit.pavilion(city, shrinePos, 24, TIMBER, theme.roof)
 	else
 		local waypost = BuildKit.part({
 			name = "Waypost",
@@ -5810,8 +5903,8 @@ local function buildCity(parent: Instance, spec: CitySpec)
 	BuildKit.spawnLocation(city, shrinePos + toCenter * 18 + Vector3.new(0, 1, 0), spawnColor, false)
 
 	local lanternRed = Color3.fromRGB(210, 60, 45)
-	for index = 1, 6 do
-		local angle = index / 6 * math.pi * 2 + 0.3
+	for index = 1, 10 do
+		local angle = index / 10 * math.pi * 2 + 0.3
 		local post = BuildKit.part({
 			name = "Lantern",
 			size = Vector3.new(1, 11, 1),
@@ -5836,7 +5929,7 @@ local function buildCity(parent: Instance, spec: CitySpec)
 
 	for i = -1, 1 do
 		local side = Vector3.new(-toCenter.Z, 0, toCenter.X)
-		BuildKit.trainingDummy(city, Vector3.new(gatePos.X, center.Y, gatePos.Z) + side * (i * 12) + toCenter * 18)
+		BuildKit.trainingDummy(city, Vector3.new(gatePos.X, center.Y, gatePos.Z) + side * (i * 16) + toCenter * 26)
 	end
 end
 
@@ -5844,28 +5937,28 @@ function Cities.build(parent: Instance)
 	local specs: { CitySpec } = {
 		{
 			key = "orthodox",
-			radius = 95,
+			radius = 260,
 			name = Paths.orthodox.cityName,
 			subtitle = Paths.orthodox.name,
 			accent = Paths.orthodox.accentColor,
 		},
 		{
 			key = "demonic",
-			radius = 95,
+			radius = 260,
 			name = Paths.demonic.cityName,
 			subtitle = Paths.demonic.name,
 			accent = Paths.demonic.accentColor,
 		},
 		{
 			key = "unorthodox",
-			radius = 95,
+			radius = 260,
 			name = Paths.unorthodox.cityName,
 			subtitle = Paths.unorthodox.name,
 			accent = Paths.unorthodox.accentColor,
 		},
 		{
 			key = "central",
-			radius = 105,
+			radius = 330,
 			name = "Cloudrest",
 			subtitle = "The Free City",
 			accent = Color3.fromRGB(235, 230, 215),
@@ -5922,41 +6015,41 @@ local function puff(parent: Instance, position: Vector3, size: Vector3, color: C
 end
 
 local function pineTree(parent: Instance, position: Vector3, rng: Random, snowy: boolean)
-	local height = rng:NextNumber(14, 22)
+	local height = rng:NextNumber(34, 62)
 	local lean = rng:NextNumber(-0.08, 0.08)
 	BuildKit.part({
 		name = "Pine_Trunk",
-		size = Vector3.new(1.8, height, 1.8),
+		size = Vector3.new(3.2, height, 3.2),
 		cframe = CFrame.new(position + Vector3.new(0, height / 2, 0)) * CFrame.Angles(lean, 0, lean),
 		color = TRUNK,
 		material = Enum.Material.Wood,
 		parent = parent,
 	})
-	local layers = rng:NextInteger(3, 4)
+	local layers = rng:NextInteger(4, 5)
 	for layer = 1, layers do
 		local t = (layer - 1) / layers
 		local layerY = position.Y + height * (0.5 + 0.55 * t)
-		local diameter = (14 - t * 8) * rng:NextNumber(0.9, 1.15)
+		local diameter = (30 - t * 16) * rng:NextNumber(0.9, 1.15)
 		local color = if snowy and layer == layers
 			then SNOW_WHITE
 			elseif layer % 2 == 0 then PINE_DARK
 			else PINE_GREEN
-		BuildKit.cylinder(parent, "Pine_Canopy", Vector3.new(position.X, layerY, position.Z), 1.4, diameter,
+		BuildKit.cylinder(parent, "Pine_Canopy", Vector3.new(position.X, layerY, position.Z), 2.2, diameter,
 			color, if snowy and layer == layers then Enum.Material.Snow else Enum.Material.Grass)
 		if snowy and layer < layers then
 			-- Snow dusting on the lower boughs' rims.
-			BuildKit.cylinder(parent, "Pine_Snow", Vector3.new(position.X, layerY + 0.8, position.Z), 0.5, diameter * 0.8,
+			BuildKit.cylinder(parent, "Pine_Snow", Vector3.new(position.X, layerY + 1.3, position.Z), 0.8, diameter * 0.8,
 				SNOW_WHITE, Enum.Material.Snow)
 		end
 	end
 end
 
 local function blossomTree(parent: Instance, position: Vector3, rng: Random)
-	local height = rng:NextNumber(10, 15)
+	local height = rng:NextNumber(24, 38)
 	local lean = rng:NextNumber(-0.14, 0.14)
 	BuildKit.part({
 		name = "Blossom_Trunk",
-		size = Vector3.new(1.6, height, 1.6),
+		size = Vector3.new(2.8, height, 2.8),
 		cframe = CFrame.new(position + Vector3.new(0, height / 2, 0)) * CFrame.Angles(lean, 0, -lean),
 		color = Color3.fromRGB(70, 54, 44),
 		material = Enum.Material.Wood,
@@ -5964,8 +6057,8 @@ local function blossomTree(parent: Instance, position: Vector3, rng: Random)
 	})
 	local crown = position + Vector3.new(lean * height * 4, height, lean * height * 4)
 	for _ = 1, rng:NextInteger(4, 6) do
-		local offset = Vector3.new(rng:NextNumber(-5, 5), rng:NextNumber(-1, 4), rng:NextNumber(-5, 5))
-		local width = rng:NextNumber(6, 10)
+		local offset = Vector3.new(rng:NextNumber(-9, 9), rng:NextNumber(-2, 7), rng:NextNumber(-9, 9))
+		local width = rng:NextNumber(11, 18)
 		puff(parent, crown + offset, Vector3.new(width, width * 0.65, width),
 			if rng:NextNumber() < 0.7 then BLOSSOM_PINK else BLOSSOM_WHITE)
 	end
@@ -5973,22 +6066,22 @@ end
 
 local function bambooClump(parent: Instance, position: Vector3, rng: Random)
 	for _ = 1, rng:NextInteger(5, 8) do
-		local culmHeight = rng:NextNumber(16, 26)
-		local base = position + Vector3.new(rng:NextNumber(-4, 4), 0, rng:NextNumber(-4, 4))
+		local culmHeight = rng:NextNumber(50, 90)
+		local base = position + Vector3.new(rng:NextNumber(-7, 7), 0, rng:NextNumber(-7, 7))
 		BuildKit.part({
 			name = "Bamboo_Culm",
-			size = Vector3.new(0.7, culmHeight, 0.7),
+			size = Vector3.new(1.4, culmHeight, 1.4),
 			cframe = CFrame.new(base + Vector3.new(0, culmHeight / 2, 0)) * CFrame.Angles(rng:NextNumber(-0.05, 0.05), 0, rng:NextNumber(-0.05, 0.05)),
 			color = BAMBOO_GREEN,
 			material = Enum.Material.SmoothPlastic,
 			parent = parent,
 		})
-		puff(parent, base + Vector3.new(0, culmHeight, 0), Vector3.new(4, 2.5, 4), Color3.fromRGB(110, 150, 82))
+		puff(parent, base + Vector3.new(0, culmHeight, 0), Vector3.new(8, 5, 8), Color3.fromRGB(110, 150, 82))
 	end
 end
 
 local function cactus(parent: Instance, position: Vector3, rng: Random)
-	local height = rng:NextNumber(7, 13)
+	local height = rng:NextNumber(12, 22)
 	local body = BuildKit.part({
 		name = "Cactus",
 		size = Vector3.new(2.2, height, 2.2),
@@ -6023,7 +6116,7 @@ local function cactus(parent: Instance, position: Vector3, rng: Random)
 end
 
 local function boulder(parent: Instance, position: Vector3, rng: Random, snowy: boolean)
-	local size = rng:NextNumber(3, 9)
+	local size = rng:NextNumber(5, 14)
 	BuildKit.part({
 		name = "Boulder",
 		size = Vector3.new(size, size * 0.7, size * rng:NextNumber(0.7, 1.3)),
@@ -6037,13 +6130,13 @@ end
 
 local function clearOfLandmarks(x: number, z: number): boolean
 	local distance = math.sqrt(x * x + z * z)
-	if distance < 270 or distance > 840 then
+	if distance < 1080 or distance > 3350 then
 		return false -- mountain ring / open sea
 	end
 	for _, center in Cities.POSITIONS :: { [string]: Vector3 } do
 		local dx = x - center.X
 		local dz = z - center.Z
-		if dx * dx + dz * dz < 140 * 140 then
+		if dx * dx + dz * dz < 400 * 400 then
 			return false
 		end
 	end
@@ -6052,9 +6145,9 @@ end
 
 function Flora.build(parent: Instance)
 	local rng = Random.new(7)
-	for _ = 1, 190 do
+	for _ = 1, 480 do
 		local theta = rng:NextNumber(-180, 180)
-		local distance = rng:NextNumber(280, 830)
+		local distance = rng:NextNumber(1100, 3300)
 		local x = math.sin(math.rad(theta)) * distance
 		local z = -math.cos(math.rad(theta)) * distance
 		if not clearOfLandmarks(x, z) then
@@ -6114,12 +6207,12 @@ local BuildKit = require(script.Parent.BuildKit)
 local Island = {}
 
 -- Shared layout facts other builders align to.
-Island.COAST_RADIUS = 900
-Island.VALLEY_RADIUS = 148
-Island.VALLEY_Y = 26 -- crater floor height (top surface)
+Island.COAST_RADIUS = 3600
+Island.VALLEY_RADIUS = 585
+Island.VALLEY_Y = 44 -- crater floor height (top surface)
 Island.GAP_HALF_ANGLE = 26 -- degrees free of peaks, centered due south
-Island.NORTH_PEAK = Vector3.new(0, 0, -205)
-Island.NORTH_PEAK_TOP = 244 -- flattened summit height (pagoda floor)
+Island.NORTH_PEAK = Vector3.new(0, 0, -820)
+Island.NORTH_PEAK_TOP = 725 -- flattened summit height (pagoda floor)
 
 export type Biome = "snow" | "desert" | "green"
 
@@ -6129,7 +6222,7 @@ local function angleOf(x: number, z: number): number
 end
 
 function Island.biomeAt(x: number, z: number): Biome
-	local wobble = math.noise(x * 0.003, z * 0.003) * 16
+	local wobble = math.noise(x * 0.001, z * 0.001) * 16
 	local theta = angleOf(x, z) + wobble
 	if theta > -58 and theta <= 44 then
 		return "snow"
@@ -6156,7 +6249,7 @@ end
 -- ------------------------------- Ocean ----------------------------------
 
 local function buildOcean()
-	local half = 1500
+	local half = 5600
 	-- Four quadrant blocks of water; island fills overwrite their voxels.
 	for cx = -1, 1, 2 do
 		for cz = -1, 1, 2 do
@@ -6176,13 +6269,13 @@ local BIOME_GROUND: { [string]: Enum.Material } = {
 }
 
 local function coastRadiusAt(theta: number): number
-	return Island.COAST_RADIUS + math.noise(math.cos(math.rad(theta)) * 2.2, math.sin(math.rad(theta)) * 2.2) * 110
+	return Island.COAST_RADIUS + math.noise(math.cos(math.rad(theta)) * 2.2, math.sin(math.rad(theta)) * 2.2) * 400
 end
 
 local function buildLandmass()
-	local cell = 48
-	for x = -1050, 1050, cell do
-		for z = -1050, 1050, cell do
+	local cell = 128
+	for x = -4200, 4200, cell do
+		for z = -4200, 4200, cell do
 			local distance = math.sqrt(x * x + z * z)
 			if distance > coastRadiusAt(angleOf(x, z)) then
 				continue
@@ -6196,16 +6289,16 @@ end
 
 -- Gentle rolling bumps, mesas in the desert, glacier shelves in the snow.
 local function buildRelief(rng: Random)
-	for _ = 1, 90 do
+	for _ = 1, 220 do
 		local theta = rng:NextNumber(-180, 180)
-		local distance = rng:NextNumber(380, 820)
+		local distance = rng:NextNumber(1530, 3270)
 		local x = math.sin(math.rad(theta)) * distance
 		local z = -math.cos(math.rad(theta)) * distance
 		local biome = Island.biomeAt(x, z)
 		if biome == "desert" and rng:NextNumber() < 0.4 then
 			-- Stepped mesa.
-			local width = rng:NextNumber(26, 60)
-			local height = rng:NextNumber(14, 40)
+			local width = rng:NextNumber(80, 185)
+			local height = rng:NextNumber(40, 120)
 			for step = 0, 2 do
 				fillBlock(
 					Vector3.new(x + rng:NextNumber(-6, 6), height * (0.2 + step * 0.3), z + rng:NextNumber(-6, 6)),
@@ -6215,23 +6308,23 @@ local function buildRelief(rng: Random)
 			end
 		elseif biome == "snow" and rng:NextNumber() < 0.35 then
 			-- Glacier shelf.
-			fillBall(Vector3.new(x, rng:NextNumber(2, 10), z), rng:NextNumber(18, 40), Enum.Material.Glacier)
+			fillBall(Vector3.new(x, rng:NextNumber(4, 18), z), rng:NextNumber(55, 120), Enum.Material.Glacier)
 		else
 			-- Rolling hill.
 			local material = if biome == "snow"
 				then Enum.Material.Snow
 				elseif biome == "desert" then Enum.Material.Sand
 				else Enum.Material.Grass
-			fillBall(Vector3.new(x, rng:NextNumber(-4, 6), z), rng:NextNumber(14, 34), material)
+			fillBall(Vector3.new(x, rng:NextNumber(-8, 14), z), rng:NextNumber(40, 100), material)
 		end
 	end
 	-- LeafyGrass patches through the green realm.
-	for _ = 1, 40 do
+	for _ = 1, 90 do
 		local theta = rng:NextNumber(50, 180)
-		local distance = rng:NextNumber(300, 800)
+		local distance = rng:NextNumber(1200, 3200)
 		local x = math.sin(math.rad(theta)) * distance
 		local z = -math.cos(math.rad(theta)) * distance
-		fillBall(Vector3.new(x, -2, z), rng:NextNumber(14, 30), Enum.Material.LeafyGrass)
+		fillBall(Vector3.new(x, -2, z), rng:NextNumber(40, 95), Enum.Material.LeafyGrass)
 	end
 end
 
@@ -6267,29 +6360,29 @@ end
 
 local function buildMountains(rng: Random)
 	-- Crater floor first, so peaks bury its rim.
-	fillCylinder(Vector3.new(0, Island.VALLEY_Y / 2, 0), Island.VALLEY_Y + 6, Island.VALLEY_RADIUS + 40, Enum.Material.Ground)
-	fillCylinder(Vector3.new(0, Island.VALLEY_Y - 1, 0), 2.5, Island.VALLEY_RADIUS + 20, Enum.Material.Grass)
+	fillCylinder(Vector3.new(0, Island.VALLEY_Y / 2, 0), Island.VALLEY_Y + 6, Island.VALLEY_RADIUS + 60, Enum.Material.Ground)
+	fillCylinder(Vector3.new(0, Island.VALLEY_Y - 1, 0), 2.5, Island.VALLEY_RADIUS + 30, Enum.Material.Grass)
 
 	-- The ring: peaks all around except the southern gap.
-	local peakCount = 15
+	local peakCount = 17
 	for index = 1, peakCount do
 		local theta = -180 + (index - 0.5) * (360 / peakCount)
 		if math.abs(180 - math.abs(theta)) < Island.GAP_HALF_ANGLE then
 			continue -- the southern pass stays open
 		end
-		local ringRadius = rng:NextNumber(195, 245)
+		local ringRadius = rng:NextNumber(780, 980)
 		local x = math.sin(math.rad(theta)) * ringRadius
 		local z = -math.cos(math.rad(theta)) * ringRadius
-		buildPeak(rng, Vector3.new(x, 0, z), rng:NextNumber(120, 215), rng:NextNumber(44, 62))
+		buildPeak(rng, Vector3.new(x, 0, z), rng:NextNumber(370, 690), rng:NextNumber(145, 215))
 	end
 
 	-- The great north peak: tallest, flattened summit for the dark pagoda.
-	buildPeak(rng, Island.NORTH_PEAK, 250, 68)
-	fillCylinder(Vector3.new(Island.NORTH_PEAK.X, Island.NORTH_PEAK_TOP - 3, Island.NORTH_PEAK.Z), 6, 34, Enum.Material.Slate)
+	buildPeak(rng, Island.NORTH_PEAK, 745, 225)
+	fillCylinder(Vector3.new(Island.NORTH_PEAK.X, Island.NORTH_PEAK_TOP - 4, Island.NORTH_PEAK.Z), 8, 80, Enum.Material.Slate)
 
 	-- Waterfall: a sheet of water down the peak's inner face into a pool.
-	fillBlock(Vector3.new(0, (Island.NORTH_PEAK_TOP + Island.VALLEY_Y) / 2, -146), Vector3.new(14, Island.NORTH_PEAK_TOP - Island.VALLEY_Y, 6), Enum.Material.Water)
-	fillCylinder(Vector3.new(0, Island.VALLEY_Y - 2, -112), 5, 24, Enum.Material.Water)
+	fillBlock(Vector3.new(0, (Island.NORTH_PEAK_TOP + Island.VALLEY_Y) / 2, -585), Vector3.new(30, Island.NORTH_PEAK_TOP - Island.VALLEY_Y, 8), Enum.Material.Water)
+	fillCylinder(Vector3.new(0, Island.VALLEY_Y - 2, -448), 5, 52, Enum.Material.Water)
 end
 
 -- ------------------------------- Rivers ---------------------------------
@@ -6300,12 +6393,12 @@ local function carveRiver(points: { Vector3 })
 		local to = points[index + 1]
 		local length = (to - from).Magnitude
 		local direction = (to - from).Unit
-		local step = 14
+		local step = 24
 		local distance = 0
 		while distance <= length do
 			local at = from + direction * distance
-			fillBall(Vector3.new(at.X, 1, at.Z), 11, Enum.Material.Air)
-			fillBall(Vector3.new(at.X, -5, at.Z), 10, Enum.Material.Water)
+			fillBall(Vector3.new(at.X, 1, at.Z), 20, Enum.Material.Air)
+			fillBall(Vector3.new(at.X, -6, at.Z), 19, Enum.Material.Water)
 			distance += step
 		end
 	end
@@ -6313,18 +6406,18 @@ end
 
 local function buildRivers()
 	carveRiver({
-		Vector3.new(240, 0, -60),
-		Vector3.new(420, 0, -10),
-		Vector3.new(600, 0, 60),
-		Vector3.new(780, 0, 90),
-		Vector3.new(960, 0, 110),
+		Vector3.new(960, 0, -240),
+		Vector3.new(1680, 0, -40),
+		Vector3.new(2400, 0, 240),
+		Vector3.new(3120, 0, 360),
+		Vector3.new(3840, 0, 440),
 	})
 	carveRiver({
-		Vector3.new(200, 0, 250),
-		Vector3.new(360, 0, 330),
-		Vector3.new(520, 0, 460),
-		Vector3.new(700, 0, 560),
-		Vector3.new(900, 0, 640),
+		Vector3.new(800, 0, 1000),
+		Vector3.new(1440, 0, 1320),
+		Vector3.new(2080, 0, 1840),
+		Vector3.new(2800, 0, 2240),
+		Vector3.new(3600, 0, 2560),
 	})
 end
 
@@ -6333,10 +6426,10 @@ end
 local function buildIslets(rng: Random)
 	for _ = 1, 7 do
 		local theta = rng:NextNumber(60, 220) -- scattered off the green/south coasts
-		local distance = rng:NextNumber(1000, 1250)
+		local distance = rng:NextNumber(4000, 5000)
 		local x = math.sin(math.rad(theta)) * distance
 		local z = -math.cos(math.rad(theta)) * distance
-		local radius = rng:NextNumber(16, 42)
+		local radius = rng:NextNumber(40, 100)
 		fillBall(Vector3.new(x, -6, z), radius, Enum.Material.Rock)
 		fillBall(Vector3.new(x, 2, z), radius * 0.7, Enum.Material.Grass)
 	end
@@ -6347,8 +6440,8 @@ end
 -- The Deep Mines are parts, not terrain; scoop the rock out around them and
 -- the shaft so the halls stay hollow under the sculpted ground.
 local function carveUnderworld()
-	fillBlock(Vector3.new(0, -33, 270), Vector3.new(44, 78, 76), Enum.Material.Air) -- shaft + ramp
-	fillBlock(Vector3.new(0, -39, 452), Vector3.new(208, 46, 316), Enum.Material.Air) -- both halls
+	fillBlock(Vector3.new(0, -33, 960), Vector3.new(44, 78, 76), Enum.Material.Air) -- shaft + ramp
+	fillBlock(Vector3.new(0, -39, 1142), Vector3.new(208, 46, 316), Enum.Material.Air) -- both halls
 end
 
 -- ------------------------------ Entrypoint ------------------------------
@@ -6391,7 +6484,7 @@ local Overworld = {}
 -- The mine shaft opening south of the crater (Underworld builds against it;
 -- Island carves the terrain hollow around it).
 Overworld.GROUND_TOP = 0
-Overworld.HOLE = { x1 = -15, x2 = 15, z1 = 240, z2 = 300 }
+Overworld.HOLE = { x1 = -15, x2 = 15, z1 = 930, z2 = 990 }
 
 local ROCK_DARK = Color3.fromRGB(92, 88, 90)
 local ROAD_COLOR = Color3.fromRGB(203, 184, 148) -- the map's tan paths
@@ -6426,29 +6519,30 @@ end
 local function buildRoads(parent: Instance)
 	-- Inner ring skirts the mountains; outer ring laces the island, like
 	-- the reference's web of tan paths.
-	ringRoad(parent, 320, 24)
-	ringRoad(parent, 620, 30)
+	ringRoad(parent, 1280, 40)
+	ringRoad(parent, 2480, 56)
 
 	-- Spokes from the inner ring out to each biome city's gate.
 	for _, key in { "orthodox", "demonic", "unorthodox" } do
 		local center = Cities.POSITIONS[key]
 		local direction = Vector3.new(center.X, 0, center.Z).Unit
-		road(parent, direction * 320, Vector3.new(center.X, 0, center.Z) - direction * 100, 9)
+		road(parent, direction * 1280, Vector3.new(center.X, 0, center.Z) - direction * 380, 12)
 	end
 
-	-- Southern pass: stair landing to the mine gate and on to the ring.
-	road(parent, Vector3.new(0, 0, 228), Vector3.new(0, 0, 320), 9)
+	-- Southern pass: city gate to the stair, stair landing to mine gate and ring.
+	road(parent, Vector3.new(0, Island.VALLEY_Y, 345), Vector3.new(0, Island.VALLEY_Y, 600), 14)
+	road(parent, Vector3.new(0, 0, 920), Vector3.new(0, 0, 1280), 12)
 
 	-- Wooden bridges where the spokes cross the rivers.
 	local bridges = {
-		{ position = Vector3.new(420, 0, -8), rotation = 20 },
-		{ position = Vector3.new(360, 0, 330), rotation = -30 },
-		{ position = Vector3.new(700, 0, 560), rotation = -35 },
+		{ position = Vector3.new(1680, 0, -40), rotation = 20 },
+		{ position = Vector3.new(1440, 0, 1320), rotation = -30 },
+		{ position = Vector3.new(2800, 0, 2240), rotation = -35 },
 	}
 	for _, bridge in bridges do
 		local deck = BuildKit.part({
 			name = "Bridge",
-			size = Vector3.new(14, 1.5, 40),
+			size = Vector3.new(18, 1.5, 56),
 			cframe = CFrame.new(bridge.position + Vector3.new(0, 1.4, 0)) * CFrame.Angles(0, math.rad(bridge.rotation), 0),
 			color = Color3.fromRGB(133, 100, 68),
 			material = Enum.Material.WoodPlanks,
@@ -6457,8 +6551,8 @@ local function buildRoads(parent: Instance)
 		for side = -1, 1, 2 do
 			BuildKit.part({
 				name = "Bridge_Rail",
-				size = Vector3.new(1, 2.4, 40),
-				cframe = deck.CFrame * CFrame.new(side * 6.5, 1.9, 0),
+				size = Vector3.new(1, 2.6, 56),
+				cframe = deck.CFrame * CFrame.new(side * 8.5, 2, 0),
 				color = Color3.fromRGB(94, 70, 48),
 				material = Enum.Material.Wood,
 				parent = parent,
@@ -6470,15 +6564,15 @@ end
 -- --------------------------- The grand stair ----------------------------
 
 local function buildCraterStair(parent: Instance)
-	local steps = 14
+	local steps = 56
 	local topY = Island.VALLEY_Y
-	local fromZ = 150
-	local toZ = 228
+	local fromZ = 600
+	local toZ = 920
 	for index = 0, steps do
 		local t = index / steps
 		BuildKit.part({
 			name = "GrandStair",
-			size = Vector3.new(26, 2.2, (toZ - fromZ) / steps + 1.5),
+			size = Vector3.new(40, 2.2, (toZ - fromZ) / steps + 1.5),
 			position = Vector3.new(0, topY - t * topY - 0.4, fromZ + t * (toZ - fromZ)),
 			color = STAIR_COLOR,
 			material = Enum.Material.Cobblestone,
@@ -6487,8 +6581,8 @@ local function buildCraterStair(parent: Instance)
 	end
 	-- Flanking balustrades.
 	for side = -1, 1, 2 do
-		local from = Vector3.new(side * 14, topY + 1, fromZ)
-		local to = Vector3.new(side * 14, 1, toZ)
+		local from = Vector3.new(side * 21, topY + 1, fromZ)
+		local to = Vector3.new(side * 21, 1, toZ)
 		local mid = (from + to) / 2
 		BuildKit.part({
 			name = "GrandStair_Rail",
@@ -6534,19 +6628,19 @@ local function buildNorthPeak(parent: Instance)
 	-- The dark pagoda from the reference, brooding over the falls.
 	BuildKit.pagodaHouse(parent, summit, 26, 26, 3,
 		Color3.fromRGB(62, 50, 48), Color3.fromRGB(34, 28, 26), Color3.fromRGB(48, 26, 26))
-	local platform = BuildKit.cylinder(parent, "Summit_Platform", summit + Vector3.new(0, 0.5, 24), 1, 26,
+	local platform = BuildKit.cylinder(parent, "Summit_Platform", summit + Vector3.new(0, 0.5, 44), 1, 40,
 		Color3.fromRGB(210, 205, 190), Enum.Material.Marble)
 	BuildKit.billboard(platform, "The Summit of Heavenpillar. Meditate above the falls.", Color3.fromRGB(255, 235, 180), 18, 1.8, Vector3.new(0, 6, 0))
 
 	-- Waterfall dressing: foam at the pool and drifting mist.
-	local poolCenter = Vector3.new(0, Island.VALLEY_Y + 0.4, -112)
-	local foam = BuildKit.cylinder(parent, "Waterfall_Foam", poolCenter, 0.6, 30, Color3.fromRGB(235, 245, 250), Enum.Material.SmoothPlastic)
+	local poolCenter = Vector3.new(0, Island.VALLEY_Y + 0.4, -448)
+	local foam = BuildKit.cylinder(parent, "Waterfall_Foam", poolCenter, 0.6, 56, Color3.fromRGB(235, 245, 250), Enum.Material.SmoothPlastic)
 	foam.Transparency = 0.45
 	foam.CanCollide = false
 	local mistAnchor = BuildKit.part({
 		name = "Waterfall_Mist",
 		size = Vector3.new(1, 1, 1),
-		position = poolCenter + Vector3.new(0, 6, -20),
+		position = poolCenter + Vector3.new(0, 8, -30),
 		transparency = 1,
 		canCollide = false,
 		parent = parent,
@@ -6564,19 +6658,58 @@ end
 -- -------------------------------- Sky -----------------------------------
 
 local function tuneSky()
-	Lighting.ClockTime = 14.4
-	Lighting.Brightness = 2.4
-	Lighting.EnvironmentDiffuseScale = 0.6
+	-- Golden-hour mood from the reference: warm low sun, heavy haze, bloom
+	-- and sun rays, waving terrain grass.
+	Lighting.ClockTime = 16.2
+	Lighting.Brightness = 2.6
+	Lighting.EnvironmentDiffuseScale = 0.55
 	Lighting.EnvironmentSpecularScale = 0.4
+	Lighting.Ambient = Color3.fromRGB(96, 90, 78)
+	Lighting.OutdoorAmbient = Color3.fromRGB(140, 130, 112)
+	-- The Atmosphere is Roblox's fog: a light, bright wash like the photo.
 	if Lighting:FindFirstChildOfClass("Atmosphere") == nil then
 		local atmosphere = Instance.new("Atmosphere")
-		atmosphere.Density = 0.32
-		atmosphere.Offset = 0.4
-		atmosphere.Color = Color3.fromRGB(199, 199, 214)
-		atmosphere.Decay = Color3.fromRGB(106, 112, 125)
-		atmosphere.Haze = 1.6
+		atmosphere.Density = 0.4
+		atmosphere.Offset = 0.55
+		atmosphere.Color = Color3.fromRGB(224, 216, 200)
+		atmosphere.Decay = Color3.fromRGB(140, 128, 108)
+		atmosphere.Haze = 3
+		atmosphere.Glare = 0.6
 		atmosphere.Parent = Lighting
 	end
+	-- The photo's soft cloud layer, via dynamic clouds.
+	pcall(function()
+		local clouds = workspace.Terrain:FindFirstChildOfClass("Clouds") or Instance.new("Clouds")
+		clouds.Cover = 0.72
+		clouds.Density = 0.4
+		clouds.Color = Color3.fromRGB(235, 230, 220)
+		clouds.Parent = workspace.Terrain
+	end)
+	if Lighting:FindFirstChildOfClass("BloomEffect") == nil then
+		local bloom = Instance.new("BloomEffect")
+		bloom.Intensity = 0.45
+		bloom.Size = 28
+		bloom.Threshold = 1.1
+		bloom.Parent = Lighting
+	end
+	if Lighting:FindFirstChildOfClass("SunRaysEffect") == nil then
+		local rays = Instance.new("SunRaysEffect")
+		rays.Intensity = 0.08
+		rays.Spread = 0.7
+		rays.Parent = Lighting
+	end
+	if Lighting:FindFirstChildOfClass("ColorCorrectionEffect") == nil then
+		local grade = Instance.new("ColorCorrectionEffect")
+		grade.Contrast = 0.06
+		grade.Saturation = 0.06
+		grade.TintColor = Color3.fromRGB(255, 246, 228)
+		grade.Parent = Lighting
+	end
+	-- Animated grass blades on Grass terrain (the reference's waving field).
+	pcall(function()
+		workspace.Terrain.Decoration = true;
+		(workspace.Terrain :: any).GrassLength = 0.8
+	end)
 end
 
 function Overworld.build(parent: Instance)
@@ -6618,9 +6751,9 @@ local STONE = Color3.fromRGB(76, 72, 78)
 local STONE_DARK = Color3.fromRGB(58, 55, 62)
 
 -- Mining Hall interior bounds
-local HALL = { x1 = -90, x2 = 90, z1 = 300, z2 = 460 }
+local HALL = { x1 = -90, x2 = 90, z1 = 990, z2 = 1150 }
 -- Deepforge Hall interior bounds
-local FORGE_HALL = { x1 = -70, x2 = 70, z1 = 460, z2 = 600 }
+local FORGE_HALL = { x1 = -70, x2 = 70, z1 = 1150, z2 = 1290 }
 local DOOR_WIDTH = 24
 
 local wallHeight = CEILING_Y - FLOOR_Y
@@ -6714,8 +6847,8 @@ local function buildMiningHall(parent: Instance)
 	end
 
 	-- A pair of dummies so miners can practice between veins.
-	BuildKit.trainingDummy(parent, Vector3.new(-60, FLOOR_Y, 320))
-	BuildKit.trainingDummy(parent, Vector3.new(60, FLOOR_Y, 320))
+	BuildKit.trainingDummy(parent, Vector3.new(-60, FLOOR_Y, 1010))
+	BuildKit.trainingDummy(parent, Vector3.new(60, FLOOR_Y, 1010))
 end
 
 local function buildDeepforgeHall(parent: Instance)
@@ -6736,7 +6869,7 @@ local function buildDeepforgeHall(parent: Instance)
 	BuildKit.part({
 		name = "Forge_Furnace",
 		size = Vector3.new(10, 12, 10),
-		position = Vector3.new(-24, FLOOR_Y + 6, 560),
+		position = Vector3.new(-24, FLOOR_Y + 6, 1250),
 		color = Color3.fromRGB(50, 46, 52),
 		material = Enum.Material.Basalt,
 		parent = parent,
@@ -6744,7 +6877,7 @@ local function buildDeepforgeHall(parent: Instance)
 	local maw = BuildKit.part({
 		name = "Forge_Maw",
 		size = Vector3.new(6, 5, 1),
-		position = Vector3.new(-24, FLOOR_Y + 4, 554.6),
+		position = Vector3.new(-24, FLOOR_Y + 4, 1244.6),
 		color = Color3.fromRGB(255, 120, 40),
 		material = Enum.Material.Neon,
 		canCollide = false,
@@ -6759,19 +6892,19 @@ local function buildDeepforgeHall(parent: Instance)
 	local anvil = BuildKit.part({
 		name = "SpiritForge_Anvil",
 		size = Vector3.new(6, 3.5, 3),
-		position = Vector3.new(-10, FLOOR_Y + 2.5, 552),
+		position = Vector3.new(-10, FLOOR_Y + 2.5, 1242),
 		color = Color3.fromRGB(120, 124, 136),
 		material = Enum.Material.Metal,
 		parent = parent,
 	})
 	BuildKit.prompt(anvil, "Craft", "Spirit Forge", 0.5, "ForgePrompt")
 	BuildKit.billboard(anvil, "The Spirit Forge", Color3.fromRGB(255, 180, 90), 12, 1.8, Vector3.new(0, 4, 0))
-	BuildKit.safeZone(parent, Vector3.new(-14, FLOOR_Y, 556), 45)
+	BuildKit.safeZone(parent, Vector3.new(-14, FLOOR_Y, 1246), 45)
 
 	-- ---------------------- Grandmaster Khadun ---------------------------
 	local dwarf = Instance.new("Model")
 	dwarf.Name = "GrandmasterKhadun"
-	local base = Vector3.new(-16, FLOOR_Y, 545)
+	local base = Vector3.new(-16, FLOOR_Y, 1235)
 	local skin = Color3.fromRGB(224, 172, 128)
 	local body = BuildKit.part({
 		name = "Body",
@@ -6832,7 +6965,7 @@ local function scatterOre(parent: Instance)
 			local x = rng:NextNumber(bounds.x1 + 12, bounds.x2 - 12)
 			local z = rng:NextNumber(bounds.z1 + 14, bounds.z2 - 14)
 			-- Keep the forge corner clear for the dwarf's floor space.
-			if z > 530 and x < 5 then
+			if z > 1220 and x < 5 then
 				x += 40
 			end
 			BuildKit.oreNode(parent, Vector3.new(x, FLOOR_Y, z), ore.id, ore.name, ore.color)

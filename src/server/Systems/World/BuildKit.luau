@@ -127,20 +127,21 @@ end
 
 -- A Chinese tiled roof layer: flat cap plus four outward-sloping eave
 -- wedges hanging past the walls. `y` is the underside of the roof.
-function BuildKit.chineseRoof(parent: Instance, center: Vector3, width: number, depth: number, y: number, roofColor: Color3)
-	local overhang = 3.5
+function BuildKit.chineseRoof(parent: Instance, center: Vector3, width: number, depth: number, y: number, roofColor: Color3, roofMaterial: Enum.Material?)
+	local material = roofMaterial or Enum.Material.Slate
+	local overhang = 6
 	local capW = width + overhang * 2
 	local capD = depth + overhang * 2
 	BuildKit.part({
 		name = "Roof_Cap",
-		size = Vector3.new(capW, 1, capD),
+		size = Vector3.new(capW, 1.5, capD),
 		position = Vector3.new(center.X, y + 0.5, center.Z),
 		color = roofColor,
-		material = Enum.Material.Slate,
+		material = material,
 		parent = parent,
 	})
 	-- Eaves on each side, sloping down and out.
-	local eaveH = 1.8
+	local eaveH = 2.6
 	local sides = {
 		{ dir = Vector3.new(0, 0, 1), len = capW },
 		{ dir = Vector3.new(0, 0, -1), len = capW },
@@ -149,13 +150,13 @@ function BuildKit.chineseRoof(parent: Instance, center: Vector3, width: number, 
 	}
 	for _, side in sides do
 		local edge = Vector3.new(center.X, y + 0.4, center.Z)
-			+ side.dir * (if side.dir.Z ~= 0 then capD / 2 + 1.4 else capW / 2 + 1.4)
+			+ side.dir * (if side.dir.Z ~= 0 then capD / 2 + 2.2 else capW / 2 + 2.2)
 		BuildKit.wedgePart({
 			name = "Roof_Eave",
-			size = Vector3.new(side.len + 2, eaveH, 3),
+			size = Vector3.new(side.len + 2, eaveH, 5),
 			cframe = CFrame.lookAt(edge, edge + side.dir) * CFrame.Angles(0, math.pi, 0),
 			color = roofColor,
-			material = Enum.Material.Slate,
+			material = material,
 			canCollide = false,
 			parent = parent,
 		})
@@ -167,18 +168,39 @@ function BuildKit.chineseRoof(parent: Instance, center: Vector3, width: number, 
 		size = if ridgeAlongX then Vector3.new(width * 0.7, 1, 1.6) else Vector3.new(1.6, 1, depth * 0.7),
 		position = Vector3.new(center.X, y + 1.4, center.Z),
 		color = roofColor,
-		material = Enum.Material.Slate,
+		material = material,
 		parent = parent,
 	})
 end
 
 -- A multi-story pagoda-style house: plaster walls, timber corner posts,
 -- a tiled roof over every floor, each floor slightly narrower.
-function BuildKit.pagodaHouse(parent: Instance, center: Vector3, width: number, depth: number, floors: number, plaster: Color3, timber: Color3, roofColor: Color3)
-	local floorHeight = 9
+function BuildKit.pagodaHouse(parent: Instance, center: Vector3, width: number, depth: number, floors: number, plaster: Color3, timber: Color3, roofColor: Color3, roofMaterial: Enum.Material?)
+	local floorHeight = 14
 	local y = center.Y
 	local w, d = width, depth
-	for _ = 1, floors do
+
+	-- Raised plank deck with front steps, like the reference houses.
+	BuildKit.part({
+		name = "House_Deck",
+		size = Vector3.new(width + 8, 1.4, depth + 8),
+		position = Vector3.new(center.X, y + 0.7, center.Z),
+		color = Color3.fromRGB(110, 82, 55),
+		material = Enum.Material.WoodPlanks,
+		parent = parent,
+	})
+	for stepIndex = 1, 3 do
+		BuildKit.part({
+			name = "House_Step",
+			size = Vector3.new(8, 0.5, 1.6),
+			position = Vector3.new(center.X, y + 1.4 - stepIndex * 0.45, center.Z + depth / 2 + 4 + stepIndex * 1.5),
+			color = Color3.fromRGB(110, 82, 55),
+			material = Enum.Material.WoodPlanks,
+			parent = parent,
+		})
+	end
+
+	for floor = 1, floors do
 		BuildKit.part({
 			name = "House_Wall",
 			size = Vector3.new(w, floorHeight, d),
@@ -191,7 +213,7 @@ function BuildKit.pagodaHouse(parent: Instance, center: Vector3, width: number, 
 			for cz = -1, 1, 2 do
 				BuildKit.part({
 					name = "House_Post",
-					size = Vector3.new(1.2, floorHeight, 1.2),
+					size = Vector3.new(2, floorHeight, 2),
 					position = Vector3.new(center.X + cx * (w / 2), y + floorHeight / 2, center.Z + cz * (d / 2)),
 					color = timber,
 					material = Enum.Material.Wood,
@@ -199,15 +221,74 @@ function BuildKit.pagodaHouse(parent: Instance, center: Vector3, width: number, 
 				})
 			end
 		end
-		BuildKit.chineseRoof(parent, Vector3.new(center.X, 0, center.Z), w, d, y + floorHeight, roofColor)
-		y += floorHeight + 1.4
+		-- Dark timber bands framing the floor, top and bottom.
+		for _, bandY in { y + 0.7, y + floorHeight - 0.7 } do
+			BuildKit.part({
+				name = "House_Band",
+				size = Vector3.new(w + 1.2, 1.3, d + 1.2),
+				position = Vector3.new(center.X, bandY, center.Z),
+				color = timber,
+				material = Enum.Material.Wood,
+				parent = parent,
+			})
+		end
+		-- Slatted windows on the front and back faces.
+		for faceSign = -1, 1, 2 do
+			for _, windowX in { -w / 4, w / 4 } do
+				if floor == 1 and faceSign == 1 and math.abs(windowX + w / 4) < 0.01 then
+					continue -- the door takes this bay
+				end
+				local faceZ = center.Z + faceSign * (d / 2 + 0.35)
+				BuildKit.part({
+					name = "House_WindowFrame",
+					size = Vector3.new(5, 6, 0.7),
+					position = Vector3.new(center.X + windowX, y + floorHeight / 2, faceZ),
+					color = timber,
+					material = Enum.Material.Wood,
+					canCollide = false,
+					parent = parent,
+				})
+				BuildKit.part({
+					name = "House_WindowPanel",
+					size = Vector3.new(3.8, 4.8, 0.5),
+					position = Vector3.new(center.X + windowX, y + floorHeight / 2, faceZ + faceSign * 0.15),
+					color = Color3.fromRGB(216, 203, 170),
+					material = Enum.Material.WoodPlanks,
+					canCollide = false,
+					parent = parent,
+				})
+			end
+		end
+		-- Ground-floor door on the front face.
+		if floor == 1 then
+			BuildKit.part({
+				name = "House_DoorFrame",
+				size = Vector3.new(7.5, 10.5, 0.8),
+				position = Vector3.new(center.X - w / 4, y + 5.25 + 1.4, center.Z + d / 2 + 0.35),
+				color = timber,
+				material = Enum.Material.Wood,
+				canCollide = false,
+				parent = parent,
+			})
+			BuildKit.part({
+				name = "House_Door",
+				size = Vector3.new(6, 9.4, 0.6),
+				position = Vector3.new(center.X - w / 4, y + 4.7 + 1.4, center.Z + d / 2 + 0.5),
+				color = Color3.fromRGB(66, 47, 33),
+				material = Enum.Material.WoodPlanks,
+				canCollide = false,
+				parent = parent,
+			})
+		end
+		BuildKit.chineseRoof(parent, Vector3.new(center.X, 0, center.Z), w, d, y + floorHeight, roofColor, roofMaterial)
+		y += floorHeight + 2
 		w *= 0.78
 		d *= 0.78
 	end
 	-- Finial at the peak.
 	BuildKit.part({
 		name = "House_Finial",
-		size = Vector3.new(0.9, 2.4, 0.9),
+		size = Vector3.new(1.3, 3.6, 1.3),
 		position = Vector3.new(center.X, y + 1.2, center.Z),
 		color = Color3.fromRGB(212, 175, 55),
 		material = Enum.Material.Metal,
@@ -220,11 +301,11 @@ end
 -- Returns the signboard part so callers can hang a label on it.
 function BuildKit.paifang(parent: Instance, center: Vector3, facing: Vector3, width: number, timber: Color3, roofColor: Color3): Part
 	local side = Vector3.new(-facing.Z, 0, facing.X)
-	local pillarHeight = 17
+	local pillarHeight = 26
 	for s = -1, 1, 2 do
 		BuildKit.part({
 			name = "Paifang_Pillar",
-			size = Vector3.new(2, pillarHeight, 2),
+			size = Vector3.new(3, pillarHeight, 3),
 			position = center + side * (s * width / 2) + Vector3.new(0, pillarHeight / 2, 0),
 			color = timber,
 			material = Enum.Material.Wood,
@@ -234,7 +315,7 @@ function BuildKit.paifang(parent: Instance, center: Vector3, facing: Vector3, wi
 	local lintelCF = CFrame.lookAt(center + Vector3.new(0, pillarHeight - 1, 0), center + Vector3.new(0, pillarHeight - 1, 0) + facing)
 	BuildKit.part({
 		name = "Paifang_Lintel",
-		size = Vector3.new(width + 5, 1.6, 2.4),
+		size = Vector3.new(width + 7, 2.4, 3.2),
 		cframe = lintelCF,
 		color = timber,
 		material = Enum.Material.Wood,
@@ -242,26 +323,26 @@ function BuildKit.paifang(parent: Instance, center: Vector3, facing: Vector3, wi
 	})
 	local sign = BuildKit.part({
 		name = "Paifang_Sign",
-		size = Vector3.new(width * 0.55, 3, 1.2),
-		cframe = lintelCF * CFrame.new(0, 2.4, 0),
+		size = Vector3.new(width * 0.55, 4.5, 1.6),
+		cframe = lintelCF * CFrame.new(0, 3.6, 0),
 		color = Color3.fromRGB(32, 28, 26),
 		material = Enum.Material.Wood,
 		parent = parent,
 	})
 	-- Little roof riding the top.
 	local roofCenter = center + Vector3.new(0, 0, 0)
-	BuildKit.chineseRoof(parent, roofCenter, width * 0.7, 4, pillarHeight + 3.2, roofColor)
+	BuildKit.chineseRoof(parent, roofCenter, width * 0.7, 6, pillarHeight + 4.6, roofColor)
 	return sign
 end
 
 -- An open pavilion: four posts and a tiered roof, no walls. Shelters shrines.
 function BuildKit.pavilion(parent: Instance, center: Vector3, size: number, timber: Color3, roofColor: Color3)
-	local postHeight = 13
+	local postHeight = 20
 	for cx = -1, 1, 2 do
 		for cz = -1, 1, 2 do
 			BuildKit.part({
 				name = "Pavilion_Post",
-				size = Vector3.new(1.4, postHeight, 1.4),
+				size = Vector3.new(2, postHeight, 2),
 				position = center + Vector3.new(cx * size / 2, postHeight / 2, cz * size / 2),
 				color = timber,
 				material = Enum.Material.Wood,
@@ -270,7 +351,7 @@ function BuildKit.pavilion(parent: Instance, center: Vector3, size: number, timb
 		end
 	end
 	BuildKit.chineseRoof(parent, Vector3.new(center.X, 0, center.Z), size + 2, size + 2, center.Y + postHeight, roofColor)
-	BuildKit.chineseRoof(parent, Vector3.new(center.X, 0, center.Z), size * 0.5, size * 0.5, center.Y + postHeight + 3.4, roofColor)
+	BuildKit.chineseRoof(parent, Vector3.new(center.X, 0, center.Z), size * 0.5, size * 0.5, center.Y + postHeight + 4.4, roofColor)
 end
 
 -- Vertical-axis cylinder (Roblox cylinders lie along local X; we stand it up).

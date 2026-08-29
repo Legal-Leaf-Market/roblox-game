@@ -14,12 +14,12 @@ local BuildKit = require(script.Parent.BuildKit)
 local Island = {}
 
 -- Shared layout facts other builders align to.
-Island.COAST_RADIUS = 900
-Island.VALLEY_RADIUS = 148
-Island.VALLEY_Y = 26 -- crater floor height (top surface)
+Island.COAST_RADIUS = 3600
+Island.VALLEY_RADIUS = 585
+Island.VALLEY_Y = 44 -- crater floor height (top surface)
 Island.GAP_HALF_ANGLE = 26 -- degrees free of peaks, centered due south
-Island.NORTH_PEAK = Vector3.new(0, 0, -205)
-Island.NORTH_PEAK_TOP = 244 -- flattened summit height (pagoda floor)
+Island.NORTH_PEAK = Vector3.new(0, 0, -820)
+Island.NORTH_PEAK_TOP = 725 -- flattened summit height (pagoda floor)
 
 export type Biome = "snow" | "desert" | "green"
 
@@ -29,7 +29,7 @@ local function angleOf(x: number, z: number): number
 end
 
 function Island.biomeAt(x: number, z: number): Biome
-	local wobble = math.noise(x * 0.003, z * 0.003) * 16
+	local wobble = math.noise(x * 0.001, z * 0.001) * 16
 	local theta = angleOf(x, z) + wobble
 	if theta > -58 and theta <= 44 then
 		return "snow"
@@ -56,7 +56,7 @@ end
 -- ------------------------------- Ocean ----------------------------------
 
 local function buildOcean()
-	local half = 1500
+	local half = 5600
 	-- Four quadrant blocks of water; island fills overwrite their voxels.
 	for cx = -1, 1, 2 do
 		for cz = -1, 1, 2 do
@@ -76,13 +76,13 @@ local BIOME_GROUND: { [string]: Enum.Material } = {
 }
 
 local function coastRadiusAt(theta: number): number
-	return Island.COAST_RADIUS + math.noise(math.cos(math.rad(theta)) * 2.2, math.sin(math.rad(theta)) * 2.2) * 110
+	return Island.COAST_RADIUS + math.noise(math.cos(math.rad(theta)) * 2.2, math.sin(math.rad(theta)) * 2.2) * 400
 end
 
 local function buildLandmass()
-	local cell = 48
-	for x = -1050, 1050, cell do
-		for z = -1050, 1050, cell do
+	local cell = 128
+	for x = -4200, 4200, cell do
+		for z = -4200, 4200, cell do
 			local distance = math.sqrt(x * x + z * z)
 			if distance > coastRadiusAt(angleOf(x, z)) then
 				continue
@@ -96,16 +96,16 @@ end
 
 -- Gentle rolling bumps, mesas in the desert, glacier shelves in the snow.
 local function buildRelief(rng: Random)
-	for _ = 1, 90 do
+	for _ = 1, 220 do
 		local theta = rng:NextNumber(-180, 180)
-		local distance = rng:NextNumber(380, 820)
+		local distance = rng:NextNumber(1530, 3270)
 		local x = math.sin(math.rad(theta)) * distance
 		local z = -math.cos(math.rad(theta)) * distance
 		local biome = Island.biomeAt(x, z)
 		if biome == "desert" and rng:NextNumber() < 0.4 then
 			-- Stepped mesa.
-			local width = rng:NextNumber(26, 60)
-			local height = rng:NextNumber(14, 40)
+			local width = rng:NextNumber(80, 185)
+			local height = rng:NextNumber(40, 120)
 			for step = 0, 2 do
 				fillBlock(
 					Vector3.new(x + rng:NextNumber(-6, 6), height * (0.2 + step * 0.3), z + rng:NextNumber(-6, 6)),
@@ -115,23 +115,23 @@ local function buildRelief(rng: Random)
 			end
 		elseif biome == "snow" and rng:NextNumber() < 0.35 then
 			-- Glacier shelf.
-			fillBall(Vector3.new(x, rng:NextNumber(2, 10), z), rng:NextNumber(18, 40), Enum.Material.Glacier)
+			fillBall(Vector3.new(x, rng:NextNumber(4, 18), z), rng:NextNumber(55, 120), Enum.Material.Glacier)
 		else
 			-- Rolling hill.
 			local material = if biome == "snow"
 				then Enum.Material.Snow
 				elseif biome == "desert" then Enum.Material.Sand
 				else Enum.Material.Grass
-			fillBall(Vector3.new(x, rng:NextNumber(-4, 6), z), rng:NextNumber(14, 34), material)
+			fillBall(Vector3.new(x, rng:NextNumber(-8, 14), z), rng:NextNumber(40, 100), material)
 		end
 	end
 	-- LeafyGrass patches through the green realm.
-	for _ = 1, 40 do
+	for _ = 1, 90 do
 		local theta = rng:NextNumber(50, 180)
-		local distance = rng:NextNumber(300, 800)
+		local distance = rng:NextNumber(1200, 3200)
 		local x = math.sin(math.rad(theta)) * distance
 		local z = -math.cos(math.rad(theta)) * distance
-		fillBall(Vector3.new(x, -2, z), rng:NextNumber(14, 30), Enum.Material.LeafyGrass)
+		fillBall(Vector3.new(x, -2, z), rng:NextNumber(40, 95), Enum.Material.LeafyGrass)
 	end
 end
 
@@ -167,29 +167,29 @@ end
 
 local function buildMountains(rng: Random)
 	-- Crater floor first, so peaks bury its rim.
-	fillCylinder(Vector3.new(0, Island.VALLEY_Y / 2, 0), Island.VALLEY_Y + 6, Island.VALLEY_RADIUS + 40, Enum.Material.Ground)
-	fillCylinder(Vector3.new(0, Island.VALLEY_Y - 1, 0), 2.5, Island.VALLEY_RADIUS + 20, Enum.Material.Grass)
+	fillCylinder(Vector3.new(0, Island.VALLEY_Y / 2, 0), Island.VALLEY_Y + 6, Island.VALLEY_RADIUS + 60, Enum.Material.Ground)
+	fillCylinder(Vector3.new(0, Island.VALLEY_Y - 1, 0), 2.5, Island.VALLEY_RADIUS + 30, Enum.Material.Grass)
 
 	-- The ring: peaks all around except the southern gap.
-	local peakCount = 15
+	local peakCount = 17
 	for index = 1, peakCount do
 		local theta = -180 + (index - 0.5) * (360 / peakCount)
 		if math.abs(180 - math.abs(theta)) < Island.GAP_HALF_ANGLE then
 			continue -- the southern pass stays open
 		end
-		local ringRadius = rng:NextNumber(195, 245)
+		local ringRadius = rng:NextNumber(780, 980)
 		local x = math.sin(math.rad(theta)) * ringRadius
 		local z = -math.cos(math.rad(theta)) * ringRadius
-		buildPeak(rng, Vector3.new(x, 0, z), rng:NextNumber(120, 215), rng:NextNumber(44, 62))
+		buildPeak(rng, Vector3.new(x, 0, z), rng:NextNumber(370, 690), rng:NextNumber(145, 215))
 	end
 
 	-- The great north peak: tallest, flattened summit for the dark pagoda.
-	buildPeak(rng, Island.NORTH_PEAK, 250, 68)
-	fillCylinder(Vector3.new(Island.NORTH_PEAK.X, Island.NORTH_PEAK_TOP - 3, Island.NORTH_PEAK.Z), 6, 34, Enum.Material.Slate)
+	buildPeak(rng, Island.NORTH_PEAK, 745, 225)
+	fillCylinder(Vector3.new(Island.NORTH_PEAK.X, Island.NORTH_PEAK_TOP - 4, Island.NORTH_PEAK.Z), 8, 80, Enum.Material.Slate)
 
 	-- Waterfall: a sheet of water down the peak's inner face into a pool.
-	fillBlock(Vector3.new(0, (Island.NORTH_PEAK_TOP + Island.VALLEY_Y) / 2, -146), Vector3.new(14, Island.NORTH_PEAK_TOP - Island.VALLEY_Y, 6), Enum.Material.Water)
-	fillCylinder(Vector3.new(0, Island.VALLEY_Y - 2, -112), 5, 24, Enum.Material.Water)
+	fillBlock(Vector3.new(0, (Island.NORTH_PEAK_TOP + Island.VALLEY_Y) / 2, -585), Vector3.new(30, Island.NORTH_PEAK_TOP - Island.VALLEY_Y, 8), Enum.Material.Water)
+	fillCylinder(Vector3.new(0, Island.VALLEY_Y - 2, -448), 5, 52, Enum.Material.Water)
 end
 
 -- ------------------------------- Rivers ---------------------------------
@@ -200,12 +200,12 @@ local function carveRiver(points: { Vector3 })
 		local to = points[index + 1]
 		local length = (to - from).Magnitude
 		local direction = (to - from).Unit
-		local step = 14
+		local step = 24
 		local distance = 0
 		while distance <= length do
 			local at = from + direction * distance
-			fillBall(Vector3.new(at.X, 1, at.Z), 11, Enum.Material.Air)
-			fillBall(Vector3.new(at.X, -5, at.Z), 10, Enum.Material.Water)
+			fillBall(Vector3.new(at.X, 1, at.Z), 20, Enum.Material.Air)
+			fillBall(Vector3.new(at.X, -6, at.Z), 19, Enum.Material.Water)
 			distance += step
 		end
 	end
@@ -213,18 +213,18 @@ end
 
 local function buildRivers()
 	carveRiver({
-		Vector3.new(240, 0, -60),
-		Vector3.new(420, 0, -10),
-		Vector3.new(600, 0, 60),
-		Vector3.new(780, 0, 90),
-		Vector3.new(960, 0, 110),
+		Vector3.new(960, 0, -240),
+		Vector3.new(1680, 0, -40),
+		Vector3.new(2400, 0, 240),
+		Vector3.new(3120, 0, 360),
+		Vector3.new(3840, 0, 440),
 	})
 	carveRiver({
-		Vector3.new(200, 0, 250),
-		Vector3.new(360, 0, 330),
-		Vector3.new(520, 0, 460),
-		Vector3.new(700, 0, 560),
-		Vector3.new(900, 0, 640),
+		Vector3.new(800, 0, 1000),
+		Vector3.new(1440, 0, 1320),
+		Vector3.new(2080, 0, 1840),
+		Vector3.new(2800, 0, 2240),
+		Vector3.new(3600, 0, 2560),
 	})
 end
 
@@ -233,10 +233,10 @@ end
 local function buildIslets(rng: Random)
 	for _ = 1, 7 do
 		local theta = rng:NextNumber(60, 220) -- scattered off the green/south coasts
-		local distance = rng:NextNumber(1000, 1250)
+		local distance = rng:NextNumber(4000, 5000)
 		local x = math.sin(math.rad(theta)) * distance
 		local z = -math.cos(math.rad(theta)) * distance
-		local radius = rng:NextNumber(16, 42)
+		local radius = rng:NextNumber(40, 100)
 		fillBall(Vector3.new(x, -6, z), radius, Enum.Material.Rock)
 		fillBall(Vector3.new(x, 2, z), radius * 0.7, Enum.Material.Grass)
 	end
@@ -247,8 +247,8 @@ end
 -- The Deep Mines are parts, not terrain; scoop the rock out around them and
 -- the shaft so the halls stay hollow under the sculpted ground.
 local function carveUnderworld()
-	fillBlock(Vector3.new(0, -33, 270), Vector3.new(44, 78, 76), Enum.Material.Air) -- shaft + ramp
-	fillBlock(Vector3.new(0, -39, 452), Vector3.new(208, 46, 316), Enum.Material.Air) -- both halls
+	fillBlock(Vector3.new(0, -33, 960), Vector3.new(44, 78, 76), Enum.Material.Air) -- shaft + ramp
+	fillBlock(Vector3.new(0, -39, 1142), Vector3.new(208, 46, 316), Enum.Material.Air) -- both halls
 end
 
 -- ------------------------------ Entrypoint ------------------------------

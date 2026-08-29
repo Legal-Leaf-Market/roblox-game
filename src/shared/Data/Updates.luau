@@ -13,6 +13,16 @@ export type UpdateEntry = {
 
 local Updates: { UpdateEntry } = {
 	{
+		version = "0.4.1",
+		date = "2026-08-29",
+		title = "The World Grows Vast",
+		notes = {
+			"The island is now four times larger: peaks past 700 studs, a crater half a kilometer wide, real journeys between realms.",
+			"Buildings rebuilt at grand scale, trees tower overhead, giant bamboo in the east.",
+			"Golden-hour light, drifting clouds, soft fog, sun rays, and waving grass across the fields.",
+		},
+	},
+	{
 		version = "0.4.0",
 		date = "2026-08-29",
 		title = "The Island of Three Realms",
