@@ -1520,6 +1520,7 @@ local Updates: { UpdateEntry } = {
 			"Inheritance: a technique at Mastery 10 can be passed down, but only to your own disciples.",
 			"Sprint with Shift (stamina bar) and dash with Q.",
 			"Qi Step (O): qi wreathes your feet for extra speed, draining qi while it burns.",
+			"Movement animations: a martial run while sprinting or qi-stepping, and dashes now leave a qi trail with a camera kick.",
 			"New ink-brush HUD: realm medallion, path banner, and the top-left menu bar you are using right now.",
 			"This Updates panel.",
 		},
@@ -7748,6 +7749,7 @@ return MenuController
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -7766,11 +7768,38 @@ local DASH_COST = 25
 local DASH_COOLDOWN = 2
 local DASH_SPEED = 70
 
+-- Roblox-owned Ninja animation pack (usable in any experience, R15): a
+-- forward-leaning martial run for sprinting, Qi Step, and dashes.
+local SPRINT_ANIM_ID = "rbxassetid://656118852"
+
 local player = Players.LocalPlayer
 
 local stamina = MAX_STAMINA
 local sprinting = false
 local dashReadyAt = 0
+local dashAnimUntil = 0
+local movementTrack: AnimationTrack? = nil
+
+local function setupAnimations(model: Model)
+	local humanoid = model:FindFirstChildOfClass("Humanoid") or model:WaitForChild("Humanoid", 10)
+	if humanoid == nil or not humanoid:IsA("Humanoid") then
+		return
+	end
+	local animator = humanoid:FindFirstChildOfClass("Animator") or humanoid:WaitForChild("Animator", 10)
+	if animator == nil or not animator:IsA("Animator") then
+		return
+	end
+	local animation = Instance.new("Animation")
+	animation.AnimationId = SPRINT_ANIM_ID
+	local ok, track = pcall(function()
+		return animator:LoadAnimation(animation)
+	end)
+	if ok and track then
+		track.Priority = Enum.AnimationPriority.Action
+		track.Looped = true
+		movementTrack = track
+	end
+end
 
 local function character(): (Humanoid?, BasePart?)
 	local model = player.Character
@@ -7866,6 +7895,48 @@ local function dash()
 		direction = root.CFrame.LookVector
 	end
 	root.AssemblyLinearVelocity = direction.Unit * DASH_SPEED + Vector3.new(0, 8, 0)
+
+	-- Feel: an animation burst, a qi trail, and a camera FOV punch.
+	dashAnimUntil = now + 0.35
+	local track = movementTrack
+	if track then
+		if not track.IsPlaying then
+			track:Play(0.05)
+		end
+		track:AdjustSpeed(2.4)
+	end
+
+	local a0 = Instance.new("Attachment")
+	a0.Position = Vector3.new(0, 1, 0)
+	a0.Parent = root
+	local a1 = Instance.new("Attachment")
+	a1.Position = Vector3.new(0, -1, 0)
+	a1.Parent = root
+	local trail = Instance.new("Trail")
+	trail.Attachment0 = a0
+	trail.Attachment1 = a1
+	trail.Color = ColorSequence.new(Color3.fromRGB(120, 210, 255))
+	trail.Transparency = NumberSequence.new(0.35, 1)
+	trail.Lifetime = 0.25
+	trail.WidthScale = NumberSequence.new(1, 0.35)
+	trail.FaceCamera = true
+	trail.Parent = root
+	task.delay(0.4, function()
+		trail.Enabled = false
+		task.wait(0.3)
+		trail:Destroy()
+		a0:Destroy()
+		a1:Destroy()
+	end)
+
+	local camera = workspace.CurrentCamera
+	if camera then
+		local baseFov = camera.FieldOfView
+		TweenService:Create(camera, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { FieldOfView = baseFov + 9 }):Play()
+		task.delay(0.15, function()
+			TweenService:Create(camera, TweenInfo.new(0.25), { FieldOfView = baseFov }):Play()
+		end)
+	end
 end
 
 function MovementController.Init()
@@ -7917,6 +7988,22 @@ function MovementController.Init()
 		end
 		humanoid.WalkSpeed = (base + flat + qiStep) * factor * (if sprintingNow then SPRINT_MULT else 1)
 		ClientState.FireStamina(stamina, MAX_STAMINA)
+
+		-- Martial run animation while sprinting, qi-stepping, or dashing;
+		-- ordinary walking keeps the default gait.
+		local track = movementTrack
+		if track then
+			local dashing = os.clock() < dashAnimUntil
+			local shouldRun = dashing or (moving and (sprintingNow or qiStep > 0))
+			if shouldRun then
+				if not track.IsPlaying then
+					track:Play(0.15)
+				end
+				track:AdjustSpeed(if dashing then 2.4 else math.max(0.8, humanoid.WalkSpeed / 16))
+			elseif track.IsPlaying then
+				track:Stop(0.2)
+			end
+		end
 	end)
 
 	-- Foot glow for everyone who qi-steps, ourselves included.
@@ -7924,6 +8011,15 @@ function MovementController.Init()
 		watchPlayer(otherPlayer)
 	end
 	Players.PlayerAdded:Connect(watchPlayer)
+
+	-- Movement animation track, re-loaded on every respawn.
+	if player.Character then
+		task.spawn(setupAnimations, player.Character)
+	end
+	player.CharacterAdded:Connect(function(model)
+		movementTrack = nil
+		task.spawn(setupAnimations, model)
+	end)
 end
 
 return MovementController

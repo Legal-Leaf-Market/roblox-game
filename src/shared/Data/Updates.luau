@@ -23,6 +23,7 @@ local Updates: { UpdateEntry } = {
 			"Inheritance: a technique at Mastery 10 can be passed down, but only to your own disciples.",
 			"Sprint with Shift (stamina bar) and dash with Q.",
 			"Qi Step (O): qi wreathes your feet for extra speed, draining qi while it burns.",
+			"Movement animations: a martial run while sprinting or qi-stepping, and dashes now leave a qi trail with a camera kick.",
 			"New ink-brush HUD: realm medallion, path banner, and the top-left menu bar you are using right now.",
 			"This Updates panel.",
 		},
