@@ -15,6 +15,7 @@ local Talents = require(Shared:WaitForChild("Data"):WaitForChild("Talents"))
 
 local UiKit = require(script.Parent.Parent.Modules.UiKit)
 local ClientState = require(script.Parent.Parent.Modules.ClientState)
+local Panels = require(script.Parent.Parent.Modules.Panels)
 
 local DestinyController = {}
 
@@ -190,7 +191,8 @@ local function spin(kind: "race" | "talent")
 end
 
 function DestinyController.Init()
-	window = UiKit.window("Destiny", "Destiny: Bloodlines & Talents", UDim2.fromOffset(780, 560), 40)
+	window = UiKit.window("Destiny", "Destiny", UDim2.fromOffset(780, 560), 40)
+	Panels.register("destiny", window.toggle)
 	local body = window.body
 
 	raceSpinButton = UiKit.button(body, "SPIN RACE", UDim2.fromOffset(370, 44), UDim2.fromOffset(0, 0), function()

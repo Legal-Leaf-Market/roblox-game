@@ -15,6 +15,7 @@ local Realms = require(Shared:WaitForChild("Data"):WaitForChild("Realms"))
 
 local UiKit = require(script.Parent.Parent.Modules.UiKit)
 local ClientState = require(script.Parent.Parent.Modules.ClientState)
+local Panels = require(script.Parent.Parent.Modules.Panels)
 
 local InventoryController = {}
 
@@ -121,6 +122,7 @@ end
 
 function InventoryController.Init()
 	window = UiKit.window("Inventory", "Inventory", UDim2.fromOffset(560, 480), 40)
+	Panels.register("inventory", window.toggle)
 	local body = window.body
 
 	UiKit.label(body, "ORE POUCH", UDim2.fromOffset(200, 16), UDim2.fromOffset(0, 0), { textSize = 12, color = UiKit.Colors.gold, bold = true })

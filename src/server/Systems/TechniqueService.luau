@@ -162,6 +162,8 @@ local function createTechnique(player: Player, payload: unknown): { [string]: an
 		form = formId,
 		element = elementId,
 		power = math.floor(power),
+		masteryXp = 0,
+		origin = nil,
 	}
 	table.insert(data.techniques, technique)
 
@@ -244,6 +246,78 @@ local function equipTechnique(player: Player, payload: unknown): { [string]: any
 		data.slots[tostring(slot)] = nil
 	end
 	DataService.PushTechniques(player)
+	return { ok = true }
+end
+
+-- ----------------------------- Inheritance ------------------------------
+
+-- Pass a MASTERED technique down to one of your own disciples. The copy
+-- starts at mastery zero: an inherited manual still has to be practiced.
+local function teachTechnique(player: Player, payload: unknown): { [string]: any }
+	if not editLimit:Allow(player.UserId) then
+		return fail("Too many requests")
+	end
+	local data = DataService.Get(player)
+	if data == nil then
+		return fail("Data not loaded yet")
+	end
+	if typeof(payload) ~= "table" then
+		return fail("Bad request")
+	end
+	local request = payload :: { [string]: unknown }
+	local id = request.id
+	local targetUserId = request.targetUserId
+	if typeof(id) ~= "string" or typeof(targetUserId) ~= "number" then
+		return fail("Bad request")
+	end
+
+	local technique = findTechnique(data, id)
+	if technique == nil then
+		return fail("No such technique")
+	end
+	if TechniqueMath.masteryLevel(technique.masteryXp) < TechniqueMath.MASTERY_MAX then
+		return fail("You must fully master an art before passing it down.")
+	end
+
+	local target = Players:GetPlayerByUserId(targetUserId)
+	local targetData = if target then DataService.Get(target) else nil
+	if target == nil or targetData == nil then
+		return fail("Your disciple must be here, in this world, to receive an inheritance.")
+	end
+	if targetData.masterUserId ~= player.UserId then
+		return fail("An inheritance passes only from master to disciple.")
+	end
+	if #targetData.techniques >= Config.MAX_TECHNIQUES then
+		return fail(`{target.Name} already holds {Config.MAX_TECHNIQUES} techniques.`)
+	end
+	for _, owned in targetData.techniques do
+		if owned.name == technique.name and owned.form == technique.form and owned.element == technique.element then
+			return fail(`{target.Name} already knows {technique.name}.`)
+		end
+	end
+
+	local inherited: Types.Technique = {
+		id = HttpService:GenerateGUID(false),
+		name = technique.name,
+		form = technique.form,
+		element = technique.element,
+		power = technique.power,
+		masteryXp = 0,
+		origin = technique.origin or player.Name,
+	}
+	table.insert(targetData.techniques, inherited)
+	for slot = 1, Config.SLOT_COUNT do
+		if targetData.slots[tostring(slot)] == nil then
+			targetData.slots[tostring(slot)] = inherited.id
+			break
+		end
+	end
+
+	DataService.Notify(target, `Your master {player.Name} has passed down {technique.name}!`, Color3.fromRGB(255, 215, 120))
+	DataService.Notify(player, `You have passed {technique.name} down to {target.Name}.`)
+	-- Teaching refines the teacher's own understanding.
+	QiSystem.AddXp(player, 100)
+	DataService.PushTechniques(target)
 	return { ok = true }
 end
 
@@ -398,7 +472,8 @@ local function castTechnique(player: Player, slotArg: unknown, aimArg: unknown)
 		DataService.Notify(player, "Not enough qi.")
 		return
 	end
-	userCooldowns[technique.id] = now + stats.cooldown * mods.cooldownMult
+	local masteryLevel = TechniqueMath.masteryLevel(technique.masteryXp)
+	userCooldowns[technique.id] = now + stats.cooldown * mods.cooldownMult * TechniqueMath.masteryCooldownMult(masteryLevel)
 	DataService.SetMeditating(player, false)
 
 	-- Aim
@@ -412,6 +487,7 @@ local function castTechnique(player: Player, slotArg: unknown, aimArg: unknown)
 		* (mods.categoryDamage[form.category] or 1)
 		* (mods.elementDamage[element.id] or 1)
 		* weaponMult
+		* TechniqueMath.masteryDamageMult(masteryLevel)
 
 	-- Execute by kind. Movement application happens on the caster's client
 	-- (it owns its character's physics); everything else resolves here.
@@ -447,13 +523,29 @@ local function castTechnique(player: Player, slotArg: unknown, aimArg: unknown)
 	if kind == "speed_buff" then
 		task.spawn(function()
 			humanoid.WalkSpeed += stats.speed
+			humanoid:SetAttribute("SpeedFlat", stats.speed)
 			task.wait(stats.duration)
 			CombatService.RefreshMods(player)
 		end)
 	end
 
-	-- Practicing an art tempers the practitioner.
+	-- Practicing an art tempers the practitioner, and the art itself.
 	QiSystem.AddXp(player, 1 + technique.power)
+	if masteryLevel < TechniqueMath.MASTERY_MAX then
+		technique.masteryXp += 2 + technique.power
+		local newLevel = TechniqueMath.masteryLevel(technique.masteryXp)
+		if newLevel > masteryLevel then
+			if newLevel >= TechniqueMath.MASTERY_MAX then
+				DataService.Notify(player, `You have MASTERED {technique.name}. It may now be passed to a disciple.`, Color3.fromRGB(255, 215, 120))
+			else
+				DataService.Notify(player, `{technique.name} reaches Mastery {newLevel}.`)
+			end
+			DataService.PushTechniques(player)
+		elseif technique.masteryXp % 10 < 3 then
+			-- Occasional push so open panels stay roughly current.
+			DataService.PushTechniques(player)
+		end
+	end
 
 	techniqueVFX:FireAllClients({
 		kind = "cast",
@@ -477,6 +569,7 @@ function TechniqueService.Init()
 	Net.remoteFunction("CreateTechnique").OnServerInvoke = createTechnique
 	Net.remoteFunction("DeleteTechnique").OnServerInvoke = deleteTechnique
 	Net.remoteFunction("EquipTechnique").OnServerInvoke = equipTechnique
+	Net.remoteFunction("TeachTechnique").OnServerInvoke = teachTechnique
 	Net.remoteEvent("CastTechnique").OnServerEvent:Connect(castTechnique)
 
 	Players.PlayerRemoving:Connect(function(player)

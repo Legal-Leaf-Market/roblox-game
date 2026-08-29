@@ -21,6 +21,7 @@ local Realms = require(Shared:WaitForChild("Data"):WaitForChild("Realms"))
 local Races = require(Shared:WaitForChild("Data"):WaitForChild("Races"))
 
 local STORE_NAME = "PlayerData_v1"
+local MAIL_STORE_NAME = "MasterMail_v1"
 local KEY_PREFIX = "u_"
 
 local DataService = {}
@@ -63,6 +64,11 @@ local function defaultData(): Types.PlayerData
 		ownedTalents = {},
 		raceSpins = Config.STARTING_RACE_SPINS,
 		talentSpins = Config.STARTING_TALENT_SPINS,
+		sectId = nil,
+		masterUserId = nil,
+		masterName = nil,
+		disciples = {},
+		masterBonus = 0,
 	}
 end
 
@@ -77,7 +83,14 @@ local function migrate(data: any): Types.PlayerData
 			(data :: any)[key] = value
 		end
 	end
-	return data :: Types.PlayerData
+	local migrated = data :: Types.PlayerData
+	-- Techniques saved before the mastery system lack masteryXp.
+	for _, technique in migrated.techniques do
+		if (technique :: any).masteryXp == nil then
+			(technique :: any).masteryXp = 0
+		end
+	end
+	return migrated
 end
 
 local function getStore(): DataStore?
@@ -91,6 +104,97 @@ local function getStore(): DataStore?
 		store = result
 	end
 	return store
+end
+
+-- ------------------------- Master-bonus mailbox --------------------------
+-- A disciple can break through while their master is offline or on another
+-- server. The credit lands in a mailbox keyed by the master's userId and is
+-- applied (then cleared) the next time the master's data loads.
+
+local mailStore: DataStore? = nil
+local memMail: { [number]: { bonus: number, removals: { number } } } = {} -- Studio fallback
+
+local function getMailStore(): DataStore?
+	if mailStore then
+		return mailStore
+	end
+	local ok, result = pcall(function()
+		return DataStoreService:GetDataStore(MAIL_STORE_NAME)
+	end)
+	if ok then
+		mailStore = result
+	end
+	return mailStore
+end
+
+type Mail = { bonus: number, removals: { number } }
+
+local function mailUpdate(userId: number, mutate: (Mail) -> ())
+	local dataStore = getMailStore()
+	if dataStore then
+		local ok, err = pcall(function()
+			dataStore:UpdateAsync(KEY_PREFIX .. userId, function(existing)
+				local mail: Mail = if typeof(existing) == "table" then existing :: Mail else { bonus = 0, removals = {} }
+				mutate(mail)
+				return mail
+			end)
+		end)
+		if ok then
+			return
+		end
+		warn(`[DataService] Mailbox write failed for {userId}: {err}`)
+	end
+	local mail = memMail[userId] or { bonus = 0, removals = {} }
+	mutate(mail)
+	memMail[userId] = mail
+end
+
+-- Credit a master with disciple-breakthrough qi bonus, wherever they are.
+function DataService.MailCredit(masterUserId: number, bonus: number)
+	mailUpdate(masterUserId, function(mail)
+		mail.bonus += bonus
+	end)
+end
+
+-- Tell an (offline) master that a disciple renounced them.
+function DataService.MailRemoveDisciple(masterUserId: number, discipleUserId: number)
+	mailUpdate(masterUserId, function(mail)
+		table.insert(mail.removals, discipleUserId)
+	end)
+end
+
+local function applyMail(userId: number, data: Types.PlayerData)
+	local mail: Mail? = nil
+	local dataStore = getMailStore()
+	if dataStore then
+		local ok, result = pcall(function()
+			local value = dataStore:GetAsync(KEY_PREFIX .. userId)
+			if value ~= nil then
+				dataStore:RemoveAsync(KEY_PREFIX .. userId)
+			end
+			return value
+		end)
+		if ok and typeof(result) == "table" then
+			mail = result :: Mail
+		end
+	end
+	if mail == nil and memMail[userId] then
+		mail = memMail[userId]
+		memMail[userId] = nil
+	end
+	if mail == nil then
+		return
+	end
+	data.masterBonus = math.min(Config.MASTER_BONUS_CAP, data.masterBonus + (mail.bonus or 0))
+	local removals: { number } = mail.removals or {}
+	for _, gone in removals do
+		for index, disciple in data.disciples do
+			if disciple.userId == gone then
+				table.remove(data.disciples, index)
+				break
+			end
+		end
+	end
 end
 
 local function load(player: Player): Profile
@@ -107,6 +211,7 @@ local function load(player: Player): Profile
 			warn(`[DataService] Load failed for {player.Name}: {result}`)
 		end
 	end
+	applyMail(player.UserId, profile.data)
 	return profile
 end
 
@@ -183,6 +288,7 @@ function DataService.PushStats(player: Player)
 		spiritStones = data.spiritStones,
 		meditating = profile.meditating,
 		equippedTalents = data.equippedTalents,
+		masterBonus = data.masterBonus,
 	})
 end
 

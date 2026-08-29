@@ -65,7 +65,14 @@ function CombatService.RefreshMods(player: Player)
 	humanoid.MaxHealth = maxHealth
 	humanoid.Health = math.min(maxHealth, maxHealth * healthFrac)
 
-	humanoid.WalkSpeed = Config.BASE_WALKSPEED + mods.walkSpeedBonus
+	local walkSpeed = Config.BASE_WALKSPEED + mods.walkSpeedBonus
+	humanoid.WalkSpeed = walkSpeed
+	-- The client's movement controller computes final speed each frame as
+	-- (BaseWalkSpeed + SpeedFlat) * SpeedFactor * sprint. Temporary combat
+	-- effects write the two modifier attributes; RefreshMods resets them.
+	humanoid:SetAttribute("BaseWalkSpeed", walkSpeed)
+	humanoid:SetAttribute("SpeedFactor", 1)
+	humanoid:SetAttribute("SpeedFlat", 0)
 
 	local defense = mods.defenseBonus
 	local armorId = data.equippedArmor
@@ -111,12 +118,14 @@ local function applyEffect(caster: Player, target: Humanoid, effect: string, dea
 		end)
 	elseif effect == "slow" then
 		task.spawn(function()
-			local original = target.WalkSpeed
-			target.WalkSpeed = original * 0.6
-			task.wait(2.5)
-			-- Restore through RefreshMods for players (authoritative),
-			-- directly for NPCs.
 			local targetPlayer = Players:GetPlayerFromCharacter(target.Parent)
+			local original = target.WalkSpeed
+			if targetPlayer then
+				target:SetAttribute("SpeedFactor", 0.6)
+			else
+				target.WalkSpeed = original * 0.6
+			end
+			task.wait(2.5)
 			if targetPlayer then
 				CombatService.RefreshMods(targetPlayer)
 			elseif target.Parent ~= nil then
@@ -125,10 +134,14 @@ local function applyEffect(caster: Player, target: Humanoid, effect: string, dea
 		end)
 	elseif effect == "shock" then
 		task.spawn(function()
-			local original = target.WalkSpeed
-			target.WalkSpeed = 0
-			task.wait(0.4)
 			local targetPlayer = Players:GetPlayerFromCharacter(target.Parent)
+			local original = target.WalkSpeed
+			if targetPlayer then
+				target:SetAttribute("SpeedFactor", 0)
+			else
+				target.WalkSpeed = 0
+			end
+			task.wait(0.4)
 			if targetPlayer then
 				CombatService.RefreshMods(targetPlayer)
 			elseif target.Parent ~= nil then

@@ -13,6 +13,7 @@ local Config = require(Shared:WaitForChild("Config"))
 
 local UiKit = require(script.Parent.Parent.Modules.UiKit)
 local ClientSettings = require(script.Parent.Parent.Modules.ClientSettings)
+local Panels = require(script.Parent.Parent.Modules.Panels)
 
 local MenuController = {}
 
@@ -40,6 +41,9 @@ end
 function MenuController.Init()
 	screen = UiKit.screen("MainMenu", 100)
 	screen.Enabled = true
+	Panels.register("menu", function()
+		setOpen(not screen.Enabled)
+	end)
 
 	blur = Instance.new("BlurEffect")
 	blur.Size = 18

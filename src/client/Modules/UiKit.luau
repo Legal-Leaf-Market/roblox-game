@@ -62,6 +62,26 @@ local function stroked(instance: GuiObject, color: Color3?, thickness: number?)
 	stroke.Parent = instance
 end
 
+-- The ink-kit double frame: an outer stroke plus an inset inner line, the
+-- way brush-drawn UI borders its buttons and panels.
+local function doubleBorder(instance: GuiObject, thickness: number?)
+	local bg = instance.BackgroundColor3
+	local darkGround = (bg.R + bg.G + bg.B) / 3 < 0.5
+	local lineColor = if darkGround then UiKit.Colors.panel else UiKit.Colors.ink
+	stroked(instance, lineColor, thickness or 1.6)
+	local inner = Instance.new("Frame")
+	inner.BackgroundTransparency = 1
+	inner.Size = UDim2.new(1, -8, 1, -8)
+	inner.Position = UDim2.fromOffset(4, 4)
+	inner.Parent = instance
+	rounded(inner, 3)
+	local innerStroke = Instance.new("UIStroke")
+	innerStroke.Color = lineColor
+	innerStroke.Thickness = 1
+	innerStroke.Transparency = 0.35
+	innerStroke.Parent = inner
+end
+
 function UiKit.frame(parent: Instance, size: UDim2, position: UDim2, color: Color3?): Frame
 	local frame = Instance.new("Frame")
 	frame.Size = size
@@ -108,7 +128,36 @@ function UiKit.button(parent: Instance, text: string, size: UDim2, position: UDi
 	button.AutoButtonColor = true
 	button.Parent = parent
 	rounded(button)
-	stroked(button)
+	doubleBorder(button)
+	button.Activated:Connect(callback)
+	return button
+end
+
+-- A circular brush-ringed icon button carrying one hanzi glyph, with a tiny
+-- caption underneath. The top-left menu bar is a row of these.
+function UiKit.iconButton(parent: Instance, glyph: string, caption: string, position: UDim2, callback: () -> ()): TextButton
+	local button = Instance.new("TextButton")
+	button.Size = UDim2.fromOffset(40, 40)
+	button.Position = position
+	button.BackgroundColor3 = UiKit.Colors.panel
+	button.BorderSizePixel = 0
+	button.Text = glyph
+	button.TextSize = 20
+	button.TextColor3 = UiKit.Colors.ink
+	button.Font = Enum.Font.Garamond
+	button.AutoButtonColor = true
+	button.Parent = parent
+	rounded(button, 20)
+	stroked(button, UiKit.Colors.ink, 1.8)
+	local caption2 = Instance.new("TextLabel")
+	caption2.Size = UDim2.new(1, 12, 0, 12)
+	caption2.Position = UDim2.new(0, -6, 1, 2)
+	caption2.BackgroundTransparency = 1
+	caption2.Text = caption
+	caption2.TextSize = 10
+	caption2.TextColor3 = UiKit.Colors.textDim
+	caption2.Font = Enum.Font.Gotham
+	caption2.Parent = button
 	button.Activated:Connect(callback)
 	return button
 end
@@ -161,13 +210,18 @@ export type Bar = { frame: Frame, fill: Frame, label: TextLabel, set: (fraction:
 
 function UiKit.bar(parent: Instance, size: UDim2, position: UDim2, fillColor: Color3): Bar
 	local frame = UiKit.frame(parent, size, position, UiKit.Colors.inset)
+	-- Pill-shaped, like a loaded brush stroke.
+	local pill = frame:FindFirstChildOfClass("UICorner")
+	if pill then
+		pill.CornerRadius = UDim.new(1, 0)
+	end
 	stroked(frame)
 	local fill = Instance.new("Frame")
 	fill.Size = UDim2.fromScale(1, 1)
 	fill.BackgroundColor3 = fillColor
 	fill.BorderSizePixel = 0
 	fill.Parent = frame
-	rounded(fill)
+	rounded(fill, 999)
 	-- Outlined text stays legible over both the ink fill and the paper gap.
 	local label = UiKit.label(frame, "", UDim2.fromScale(1, 1), UDim2.fromScale(0, 0), {
 		textSize = 12,
@@ -200,26 +254,31 @@ function UiKit.window(name: string, title: string, size: UDim2, displayOrder: nu
 
 	local root = UiKit.frame(screen, size, UDim2.new(0.5, 0, 0.5, 0))
 	root.AnchorPoint = Vector2.new(0.5, 0.5)
-	stroked(root, UiKit.Colors.ink, 2)
+	doubleBorder(root, 2)
 
-	local titleBar = UiKit.frame(root, UDim2.new(1, 0, 0, 34), UDim2.fromOffset(0, 0), UiKit.Colors.ink)
-	UiKit.label(titleBar, title, UDim2.new(1, -50, 1, 0), UDim2.fromOffset(12, 0), {
-		textSize = 21,
+	-- Ink banner floating over the top edge, the way the kit titles panels.
+	local banner = UiKit.frame(root, UDim2.new(0.62, 0, 0, 32), UDim2.new(0.19, 0, 0, -14), UiKit.Colors.ink)
+	banner.ZIndex = 3
+	stroked(banner, UiKit.Colors.ink, 1.2)
+	local bannerText = UiKit.label(banner, title:upper(), UDim2.fromScale(1, 1), UDim2.fromScale(0, 0), {
+		textSize = 19,
 		color = UiKit.Colors.panel,
 		title = true,
+		xalign = Enum.TextXAlignment.Center,
 	})
+	bannerText.ZIndex = 4
 
 	local window: Window
 	local function setVisible(visible: boolean)
 		screen.Enabled = visible
 	end
-	UiKit.button(titleBar, "X", UDim2.fromOffset(26, 26), UDim2.new(1, -30, 0, 4), function()
+	UiKit.button(root, "X", UDim2.fromOffset(26, 26), UDim2.new(1, -32, 0, 6), function()
 		setVisible(false)
 	end, { color = UiKit.Colors.ink, textColor = UiKit.Colors.panel })
 
 	local body = Instance.new("Frame")
-	body.Size = UDim2.new(1, -16, 1, -46)
-	body.Position = UDim2.fromOffset(8, 38)
+	body.Size = UDim2.new(1, -20, 1, -48)
+	body.Position = UDim2.fromOffset(10, 36)
 	body.BackgroundTransparency = 1
 	body.Parent = root
 

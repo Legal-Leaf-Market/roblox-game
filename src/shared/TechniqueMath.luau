@@ -54,4 +54,45 @@ function TechniqueMath.compute(formId: string, elementId: string, power: number)
 	return stats, nil
 end
 
+-- ------------------------------ Mastery ---------------------------------
+-- Casting a technique earns mastery xp. Ten levels; at the cap the art can
+-- be passed down to a disciple. Levels also sharpen the art itself, so
+-- practice is never wasted.
+
+TechniqueMath.MASTERY_MAX = 10
+
+-- Total xp required to REACH a level (level n costs 40*n over level n-1).
+function TechniqueMath.masteryTotalXpFor(level: number): number
+	return 20 * level * (level + 1)
+end
+
+function TechniqueMath.masteryLevel(xp: number): number
+	for level = TechniqueMath.MASTERY_MAX, 1, -1 do
+		if xp >= TechniqueMath.masteryTotalXpFor(level) then
+			return level
+		end
+	end
+	return 0
+end
+
+-- Returns (level, xp into current level, xp needed for next level).
+-- `needed` is 0 at the cap.
+function TechniqueMath.masteryProgress(xp: number): (number, number, number)
+	local level = TechniqueMath.masteryLevel(xp)
+	if level >= TechniqueMath.MASTERY_MAX then
+		return level, 0, 0
+	end
+	local floor = TechniqueMath.masteryTotalXpFor(level)
+	local ceiling = TechniqueMath.masteryTotalXpFor(level + 1)
+	return level, xp - floor, ceiling - floor
+end
+
+function TechniqueMath.masteryDamageMult(level: number): number
+	return 1 + level * 0.02
+end
+
+function TechniqueMath.masteryCooldownMult(level: number): number
+	return 1 - level * 0.01
+end
+
 return table.freeze(TechniqueMath)

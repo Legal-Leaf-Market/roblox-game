@@ -21,6 +21,8 @@ local REMOTE_EVENTS: { string } = {
 	"TechniquesChanged", -- designed techniques + hotbar slots
 	"DestinyChanged", -- owned/equipped races and talents, spin counts
 	"SpinResult", -- outcome of a race/talent spin, for the reveal animation
+	"SocialChanged", -- sect membership, master, disciples, dao fortune
+	"DiscipleOffer", -- someone offers to take you as their disciple
 	"Notify", -- toast message { text, color? }
 	"OpenCrafting", -- player used the Spirit Forge prompt
 	"DwarfDialogue", -- mission dialogue payload
@@ -28,6 +30,7 @@ local REMOTE_EVENTS: { string } = {
 
 	-- Client -> server intents
 	"MeditateSet", -- (meditating: boolean)
+	"QiStepSet", -- (active: boolean) qi over the feet: speed for qi drain
 	"CastTechnique", -- (slot: number, aimPosition: Vector3)
 }
 
@@ -42,6 +45,17 @@ local REMOTE_FUNCTIONS: { string } = {
 	"CraftItem", -- forge a weapon/armor from ores
 	"EquipItem", -- equip owned weapon/armor
 	"MissionAction", -- "accept" | "turnin" at the dwarf
+
+	-- Sect & lineage
+	"CreateSect", -- found a sect (name + spirit stones)
+	"JoinSect", -- join an existing sect by name
+	"LeaveSect",
+	"DisbandSect", -- leader only
+	"SetSectRank", -- promote/demote/kick/transfer leadership
+	"OfferDiscipleship", -- (targetName) both online
+	"RespondDiscipleship", -- (accept: boolean)
+	"RenounceMaster",
+	"TeachTechnique", -- pass a mastered technique to a disciple
 }
 
 local Net = {}

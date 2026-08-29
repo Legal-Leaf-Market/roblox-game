@@ -19,6 +19,8 @@ export type Technique = {
 	form: string,
 	element: string,
 	power: number,
+	masteryXp: number, -- earned by casting; TechniqueMath derives the level
+	origin: string?, -- who first passed this art down, nil = self-made
 }
 
 -- Persisted per player. Keep DataStore-safe: string keys, no Instances,
@@ -47,6 +49,13 @@ export type PlayerData = {
 	ownedTalents: { [string]: number },
 	raceSpins: number,
 	talentSpins: number,
+
+	-- Sect & lineage
+	sectId: string?,
+	masterUserId: number?,
+	masterName: string?,
+	disciples: { { userId: number, name: string } },
+	masterBonus: number, -- +qi-gain multiplier earned from disciple breakthroughs
 }
 
 -- Derived stats for one technique at one power level.

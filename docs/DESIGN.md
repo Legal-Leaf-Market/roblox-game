@@ -60,6 +60,21 @@ Talents (`Data/Talents.luau`, 41 entries, same rarity ladder) are passive
 physiques; up to 3 equipped. Spins come from starting grants, breakthroughs,
 dwarf missions, or spirit stones.
 
+## Sects, lineage, and mastery (v0.3)
+
+Sects persist across servers in their own DataStore with a unique filtered
+name and five ranks: Sect Leader, Vice Sect Leader, Elder, Inner Disciple,
+Outer Disciple. Leader/Vice manage ranks; leadership transfers by Crown.
+Master-disciple bonds are separate from sects: offered and accepted in
+person, up to 5 disciples. Each disciple breakthrough adds +1x to the
+master's qi gain (capped, tunable in Config; the mailbox store credits
+offline masters). Techniques gain mastery by being cast (10 levels: +2%
+damage, -1% cooldown each); at Mastery 10 an art can be passed down, but
+only master to disciple, and the copy starts unmastered. Movement layer:
+Shift sprint on a client-side stamina pool, Q dash (2s), and Qi Step (O),
+a server-authoritative qi drain for extra speed with a replicated foot
+glow.
+
 ## Economy: mine, forge, design
 
 Ore nodes deplete and respawn on timers; spirit stone nodes pay currency

@@ -41,6 +41,24 @@ local Config = table.freeze({
 	-- Qi loop
 	QI_TICK_SECONDS = 1,
 	AUTOSAVE_SECONDS = 120,
+
+	-- Qi Step (O): qi over the feet, speed for drain
+	QISTEP_DRAIN = 4, -- qi per tick while active
+	QISTEP_SPEED_BONUS = 6, -- added walkspeed
+
+	-- Technique mastery
+	MASTERY_MAX_LEVEL = 10, -- at max, a technique can be passed down
+
+	-- Sects
+	SECT_CREATE_COST = 500, -- spirit stones
+	SECT_NAME_MIN = 3,
+	SECT_NAME_MAX = 24,
+	SECT_MEMBER_CAP = 50,
+
+	-- Master & disciple
+	MAX_DISCIPLES = 5,
+	MASTER_BONUS_PER_BREAKTHROUGH = 1, -- +1.0x qi gain per disciple breakthrough
+	MASTER_BONUS_CAP = 10, -- total bonus cap; tune before this becomes an economy
 })
 
 return Config
@@ -1474,8 +1492,69 @@ return table.freeze(Forms)
 ]]></string>
           </Properties>
         </Item>
+        <Item class="ModuleScript" referent="13">
+          <Properties>
+            <string name="Name">Updates</string>
+            <string name="Source"><![CDATA[--!strict
+-- ModuleScript: ReplicatedStorage > Shared > Data > Updates
+-- The in-game changelog, newest first. The Updates button (top-left) reads
+-- this. Add an entry with every release; players who can see the game
+-- moving stay.
+
+export type UpdateEntry = {
+	version: string,
+	date: string,
+	title: string,
+	notes: { string },
+}
+
+local Updates: { UpdateEntry } = {
+	{
+		version = "0.3.0",
+		date = "2026-08-29",
+		title = "Sects, Lineage & Mastery",
+		notes = {
+			"Sects: found your own with a name of your choosing. Ranks: Sect Leader, Vice Sect Leader, Elder, Inner Disciple, Outer Disciple. Press N.",
+			"Master & disciple: take up to 5 disciples. When a disciple breaks through, the master's qi gain grows.",
+			"Technique mastery: casting an art levels it, up to Mastery 10. Each level adds damage and trims cooldown.",
+			"Inheritance: a technique at Mastery 10 can be passed down, but only to your own disciples.",
+			"Sprint with Shift (stamina bar) and dash with Q.",
+			"Qi Step (O): qi wreathes your feet for extra speed, draining qi while it burns.",
+			"New ink-brush HUD: realm medallion, path banner, and the top-left menu bar you are using right now.",
+			"This Updates panel.",
+		},
+	},
+	{
+		version = "0.2.1",
+		date = "2026-08-29",
+		title = "The Ink & Paper Update",
+		notes = {
+			"All menus redrawn in black and white, like a page out of a manhwa.",
+			"The three cities rebuilt in proper Chinese architecture: pagoda homes, paifang gates, shrine pavilions, red lanterns.",
+			"New flora: layered pines, blossom trees, and bamboo groves in the southeast.",
+			"A cobblestone ring road now circles Heavenpillar Mountain.",
+		},
+	},
+	{
+		version = "0.2.0",
+		date = "2026-08-29",
+		title = "The World Awakens",
+		notes = {
+			"Heavenpillar Mountain, three path cities, and the Deep Mines beneath.",
+			"Qi cultivation with 8 realms, meditation, and breakthroughs.",
+			"Design your own techniques: 14 forms, 9 elements, power 0-10, named by you.",
+			"Destiny spins: 124 races of Chinese myth and 41 talents.",
+			"Mining, Grandmaster Khadun's commissions, and the Spirit Forge.",
+		},
+	},
+}
+
+return table.freeze(Updates)
+]]></string>
+          </Properties>
+        </Item>
       </Item>
-      <Item class="ModuleScript" referent="13">
+      <Item class="ModuleScript" referent="14">
         <Properties>
           <string name="Name">Net</string>
           <string name="Source"><![CDATA[--!strict
@@ -1501,6 +1580,8 @@ local REMOTE_EVENTS: { string } = {
 	"TechniquesChanged", -- designed techniques + hotbar slots
 	"DestinyChanged", -- owned/equipped races and talents, spin counts
 	"SpinResult", -- outcome of a race/talent spin, for the reveal animation
+	"SocialChanged", -- sect membership, master, disciples, dao fortune
+	"DiscipleOffer", -- someone offers to take you as their disciple
 	"Notify", -- toast message { text, color? }
 	"OpenCrafting", -- player used the Spirit Forge prompt
 	"DwarfDialogue", -- mission dialogue payload
@@ -1508,6 +1589,7 @@ local REMOTE_EVENTS: { string } = {
 
 	-- Client -> server intents
 	"MeditateSet", -- (meditating: boolean)
+	"QiStepSet", -- (active: boolean) qi over the feet: speed for qi drain
 	"CastTechnique", -- (slot: number, aimPosition: Vector3)
 }
 
@@ -1522,6 +1604,17 @@ local REMOTE_FUNCTIONS: { string } = {
 	"CraftItem", -- forge a weapon/armor from ores
 	"EquipItem", -- equip owned weapon/armor
 	"MissionAction", -- "accept" | "turnin" at the dwarf
+
+	-- Sect & lineage
+	"CreateSect", -- found a sect (name + spirit stones)
+	"JoinSect", -- join an existing sect by name
+	"LeaveSect",
+	"DisbandSect", -- leader only
+	"SetSectRank", -- promote/demote/kick/transfer leadership
+	"OfferDiscipleship", -- (targetName) both online
+	"RespondDiscipleship", -- (accept: boolean)
+	"RenounceMaster",
+	"TeachTechnique", -- pass a mastered technique to a disciple
 }
 
 local Net = {}
@@ -1593,7 +1686,7 @@ return Net
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="14">
+      <Item class="ModuleScript" referent="15">
         <Properties>
           <string name="Name">RateLimit</string>
           <string name="Source"><![CDATA[--!strict
@@ -1643,7 +1736,7 @@ return RateLimit
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="15">
+      <Item class="ModuleScript" referent="16">
         <Properties>
           <string name="Name">StatCalc</string>
           <string name="Source"><![CDATA[--!strict
@@ -1746,7 +1839,7 @@ return table.freeze(StatCalc)
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="16">
+      <Item class="ModuleScript" referent="17">
         <Properties>
           <string name="Name">TechniqueMath</string>
           <string name="Source"><![CDATA[--!strict
@@ -1805,11 +1898,52 @@ function TechniqueMath.compute(formId: string, elementId: string, power: number)
 	return stats, nil
 end
 
+-- ------------------------------ Mastery ---------------------------------
+-- Casting a technique earns mastery xp. Ten levels; at the cap the art can
+-- be passed down to a disciple. Levels also sharpen the art itself, so
+-- practice is never wasted.
+
+TechniqueMath.MASTERY_MAX = 10
+
+-- Total xp required to REACH a level (level n costs 40*n over level n-1).
+function TechniqueMath.masteryTotalXpFor(level: number): number
+	return 20 * level * (level + 1)
+end
+
+function TechniqueMath.masteryLevel(xp: number): number
+	for level = TechniqueMath.MASTERY_MAX, 1, -1 do
+		if xp >= TechniqueMath.masteryTotalXpFor(level) then
+			return level
+		end
+	end
+	return 0
+end
+
+-- Returns (level, xp into current level, xp needed for next level).
+-- `needed` is 0 at the cap.
+function TechniqueMath.masteryProgress(xp: number): (number, number, number)
+	local level = TechniqueMath.masteryLevel(xp)
+	if level >= TechniqueMath.MASTERY_MAX then
+		return level, 0, 0
+	end
+	local floor = TechniqueMath.masteryTotalXpFor(level)
+	local ceiling = TechniqueMath.masteryTotalXpFor(level + 1)
+	return level, xp - floor, ceiling - floor
+end
+
+function TechniqueMath.masteryDamageMult(level: number): number
+	return 1 + level * 0.02
+end
+
+function TechniqueMath.masteryCooldownMult(level: number): number
+	return 1 - level * 0.01
+end
+
 return table.freeze(TechniqueMath)
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="17">
+      <Item class="ModuleScript" referent="18">
         <Properties>
           <string name="Name">Trove</string>
           <string name="Source"><![CDATA[--!strict
@@ -1889,7 +2023,7 @@ return Trove
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="18">
+      <Item class="ModuleScript" referent="19">
         <Properties>
           <string name="Name">Types</string>
           <string name="Source"><![CDATA[--!strict
@@ -1913,6 +2047,8 @@ export type Technique = {
 	form: string,
 	element: string,
 	power: number,
+	masteryXp: number, -- earned by casting; TechniqueMath derives the level
+	origin: string?, -- who first passed this art down, nil = self-made
 }
 
 -- Persisted per player. Keep DataStore-safe: string keys, no Instances,
@@ -1941,6 +2077,13 @@ export type PlayerData = {
 	ownedTalents: { [string]: number },
 	raceSpins: number,
 	talentSpins: number,
+
+	-- Sect & lineage
+	sectId: string?,
+	masterUserId: number?,
+	masterName: string?,
+	disciples: { { userId: number, name: string } },
+	masterBonus: number, -- +qi-gain multiplier earned from disciple breakthroughs
 }
 
 -- Derived stats for one technique at one power level.
@@ -1979,11 +2122,11 @@ return table.freeze({})
       </Item>
     </Item>
   </Item>
-  <Item class="ServerScriptService" referent="19">
+  <Item class="ServerScriptService" referent="20">
     <Properties>
       <string name="Name">ServerScriptService</string>
     </Properties>
-    <Item class="Script" referent="20">
+    <Item class="Script" referent="21">
       <Properties>
         <string name="Name">Server</string>
         <token name="RunContext">0</token>
@@ -2036,11 +2179,11 @@ end
 print("[Server] All systems started")
 ]]></string>
       </Properties>
-      <Item class="Folder" referent="21">
+      <Item class="Folder" referent="22">
         <Properties>
           <string name="Name">Systems</string>
         </Properties>
-        <Item class="ModuleScript" referent="22">
+        <Item class="ModuleScript" referent="23">
           <Properties>
             <string name="Name">CombatService</string>
             <string name="Source"><![CDATA[--!strict
@@ -2110,7 +2253,14 @@ function CombatService.RefreshMods(player: Player)
 	humanoid.MaxHealth = maxHealth
 	humanoid.Health = math.min(maxHealth, maxHealth * healthFrac)
 
-	humanoid.WalkSpeed = Config.BASE_WALKSPEED + mods.walkSpeedBonus
+	local walkSpeed = Config.BASE_WALKSPEED + mods.walkSpeedBonus
+	humanoid.WalkSpeed = walkSpeed
+	-- The client's movement controller computes final speed each frame as
+	-- (BaseWalkSpeed + SpeedFlat) * SpeedFactor * sprint. Temporary combat
+	-- effects write the two modifier attributes; RefreshMods resets them.
+	humanoid:SetAttribute("BaseWalkSpeed", walkSpeed)
+	humanoid:SetAttribute("SpeedFactor", 1)
+	humanoid:SetAttribute("SpeedFlat", 0)
 
 	local defense = mods.defenseBonus
 	local armorId = data.equippedArmor
@@ -2156,12 +2306,14 @@ local function applyEffect(caster: Player, target: Humanoid, effect: string, dea
 		end)
 	elseif effect == "slow" then
 		task.spawn(function()
-			local original = target.WalkSpeed
-			target.WalkSpeed = original * 0.6
-			task.wait(2.5)
-			-- Restore through RefreshMods for players (authoritative),
-			-- directly for NPCs.
 			local targetPlayer = Players:GetPlayerFromCharacter(target.Parent)
+			local original = target.WalkSpeed
+			if targetPlayer then
+				target:SetAttribute("SpeedFactor", 0.6)
+			else
+				target.WalkSpeed = original * 0.6
+			end
+			task.wait(2.5)
 			if targetPlayer then
 				CombatService.RefreshMods(targetPlayer)
 			elseif target.Parent ~= nil then
@@ -2170,10 +2322,14 @@ local function applyEffect(caster: Player, target: Humanoid, effect: string, dea
 		end)
 	elseif effect == "shock" then
 		task.spawn(function()
-			local original = target.WalkSpeed
-			target.WalkSpeed = 0
-			task.wait(0.4)
 			local targetPlayer = Players:GetPlayerFromCharacter(target.Parent)
+			local original = target.WalkSpeed
+			if targetPlayer then
+				target:SetAttribute("SpeedFactor", 0)
+			else
+				target.WalkSpeed = 0
+			end
+			task.wait(0.4)
 			if targetPlayer then
 				CombatService.RefreshMods(targetPlayer)
 			elseif target.Parent ~= nil then
@@ -2277,7 +2433,7 @@ return CombatService
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="23">
+        <Item class="ModuleScript" referent="24">
           <Properties>
             <string name="Name">DataService</string>
             <string name="Source"><![CDATA[--!strict
@@ -2303,6 +2459,7 @@ local Realms = require(Shared:WaitForChild("Data"):WaitForChild("Realms"))
 local Races = require(Shared:WaitForChild("Data"):WaitForChild("Races"))
 
 local STORE_NAME = "PlayerData_v1"
+local MAIL_STORE_NAME = "MasterMail_v1"
 local KEY_PREFIX = "u_"
 
 local DataService = {}
@@ -2345,6 +2502,11 @@ local function defaultData(): Types.PlayerData
 		ownedTalents = {},
 		raceSpins = Config.STARTING_RACE_SPINS,
 		talentSpins = Config.STARTING_TALENT_SPINS,
+		sectId = nil,
+		masterUserId = nil,
+		masterName = nil,
+		disciples = {},
+		masterBonus = 0,
 	}
 end
 
@@ -2359,7 +2521,14 @@ local function migrate(data: any): Types.PlayerData
 			(data :: any)[key] = value
 		end
 	end
-	return data :: Types.PlayerData
+	local migrated = data :: Types.PlayerData
+	-- Techniques saved before the mastery system lack masteryXp.
+	for _, technique in migrated.techniques do
+		if (technique :: any).masteryXp == nil then
+			(technique :: any).masteryXp = 0
+		end
+	end
+	return migrated
 end
 
 local function getStore(): DataStore?
@@ -2373,6 +2542,97 @@ local function getStore(): DataStore?
 		store = result
 	end
 	return store
+end
+
+-- ------------------------- Master-bonus mailbox --------------------------
+-- A disciple can break through while their master is offline or on another
+-- server. The credit lands in a mailbox keyed by the master's userId and is
+-- applied (then cleared) the next time the master's data loads.
+
+local mailStore: DataStore? = nil
+local memMail: { [number]: { bonus: number, removals: { number } } } = {} -- Studio fallback
+
+local function getMailStore(): DataStore?
+	if mailStore then
+		return mailStore
+	end
+	local ok, result = pcall(function()
+		return DataStoreService:GetDataStore(MAIL_STORE_NAME)
+	end)
+	if ok then
+		mailStore = result
+	end
+	return mailStore
+end
+
+type Mail = { bonus: number, removals: { number } }
+
+local function mailUpdate(userId: number, mutate: (Mail) -> ())
+	local dataStore = getMailStore()
+	if dataStore then
+		local ok, err = pcall(function()
+			dataStore:UpdateAsync(KEY_PREFIX .. userId, function(existing)
+				local mail: Mail = if typeof(existing) == "table" then existing :: Mail else { bonus = 0, removals = {} }
+				mutate(mail)
+				return mail
+			end)
+		end)
+		if ok then
+			return
+		end
+		warn(`[DataService] Mailbox write failed for {userId}: {err}`)
+	end
+	local mail = memMail[userId] or { bonus = 0, removals = {} }
+	mutate(mail)
+	memMail[userId] = mail
+end
+
+-- Credit a master with disciple-breakthrough qi bonus, wherever they are.
+function DataService.MailCredit(masterUserId: number, bonus: number)
+	mailUpdate(masterUserId, function(mail)
+		mail.bonus += bonus
+	end)
+end
+
+-- Tell an (offline) master that a disciple renounced them.
+function DataService.MailRemoveDisciple(masterUserId: number, discipleUserId: number)
+	mailUpdate(masterUserId, function(mail)
+		table.insert(mail.removals, discipleUserId)
+	end)
+end
+
+local function applyMail(userId: number, data: Types.PlayerData)
+	local mail: Mail? = nil
+	local dataStore = getMailStore()
+	if dataStore then
+		local ok, result = pcall(function()
+			local value = dataStore:GetAsync(KEY_PREFIX .. userId)
+			if value ~= nil then
+				dataStore:RemoveAsync(KEY_PREFIX .. userId)
+			end
+			return value
+		end)
+		if ok and typeof(result) == "table" then
+			mail = result :: Mail
+		end
+	end
+	if mail == nil and memMail[userId] then
+		mail = memMail[userId]
+		memMail[userId] = nil
+	end
+	if mail == nil then
+		return
+	end
+	data.masterBonus = math.min(Config.MASTER_BONUS_CAP, data.masterBonus + (mail.bonus or 0))
+	local removals: { number } = mail.removals or {}
+	for _, gone in removals do
+		for index, disciple in data.disciples do
+			if disciple.userId == gone then
+				table.remove(data.disciples, index)
+				break
+			end
+		end
+	end
 end
 
 local function load(player: Player): Profile
@@ -2389,6 +2649,7 @@ local function load(player: Player): Profile
 			warn(`[DataService] Load failed for {player.Name}: {result}`)
 		end
 	end
+	applyMail(player.UserId, profile.data)
 	return profile
 end
 
@@ -2465,6 +2726,7 @@ function DataService.PushStats(player: Player)
 		spiritStones = data.spiritStones,
 		meditating = profile.meditating,
 		equippedTalents = data.equippedTalents,
+		masterBonus = data.masterBonus,
 	})
 end
 
@@ -2571,7 +2833,7 @@ return DataService
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="24">
+        <Item class="ModuleScript" referent="25">
           <Properties>
             <string name="Name">DestinyService</string>
             <string name="Source"><![CDATA[--!strict
@@ -2809,7 +3071,7 @@ return DestinyService
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="25">
+        <Item class="ModuleScript" referent="26">
           <Properties>
             <string name="Name">ForgeService</string>
             <string name="Source"><![CDATA[--!strict
@@ -3111,7 +3373,7 @@ return ForgeService
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="26">
+        <Item class="ModuleScript" referent="27">
           <Properties>
             <string name="Name">MiningService</string>
             <string name="Source"><![CDATA[--!strict
@@ -3220,7 +3482,7 @@ return MiningService
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="27">
+        <Item class="ModuleScript" referent="28">
           <Properties>
             <string name="Name">PathService</string>
             <string name="Source"><![CDATA[--!strict
@@ -3320,7 +3582,7 @@ return PathService
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="28">
+        <Item class="ModuleScript" referent="29">
           <Properties>
             <string name="Name">PlayerLifecycle</string>
             <string name="Source"><![CDATA[--!strict
@@ -3372,7 +3634,7 @@ return PlayerLifecycle
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="29">
+        <Item class="ModuleScript" referent="30">
           <Properties>
             <string name="Name">QiSystem</string>
             <string name="Source"><![CDATA[--!strict
@@ -3450,6 +3712,20 @@ function QiSystem.CheckBreakthrough(player: Player)
 	data.raceSpins += Config.BREAKTHROUGH_RACE_SPINS
 	data.talentSpins += Config.BREAKTHROUGH_TALENT_SPINS
 
+	-- A disciple's breakthrough honors the master: their qi gain deepens.
+	if data.masterUserId then
+		local masterUserId = data.masterUserId :: number
+		local master = Players:GetPlayerByUserId(masterUserId)
+		local masterData = if master then DataService.Get(master) else nil
+		if master and masterData then
+			masterData.masterBonus = math.min(Config.MASTER_BONUS_CAP, masterData.masterBonus + Config.MASTER_BONUS_PER_BREAKTHROUGH)
+			DataService.Notify(master, `Your disciple {player.Name} has broken through! Your qi gain deepens (+{Config.MASTER_BONUS_PER_BREAKTHROUGH}x).`, Color3.fromRGB(255, 215, 120))
+			DataService.PushStats(master)
+		else
+			DataService.MailCredit(masterUserId, Config.MASTER_BONUS_PER_BREAKTHROUGH)
+		end
+	end
+
 	local newRealm = Realms[data.realm]
 	DataService.Notify(player, `Breakthrough! You have entered {newRealm.name}.`, Color3.fromRGB(255, 215, 120))
 	DataService.Notify(player, `The heavens grant destiny: +{Config.BREAKTHROUGH_RACE_SPINS} race spins, +{Config.BREAKTHROUGH_TALENT_SPINS} talent spins.`)
@@ -3469,11 +3745,46 @@ function QiSystem.CheckBreakthrough(player: Player)
 	DataService.PushDestiny(player)
 end
 
+-- Qi Step: qi flows over the feet. Costs qi every tick, grants speed via
+-- attributes the client's movement formula reads; the QiStepping attribute
+-- replicates, so every client can draw the foot glow.
+local qiStepping: { [Player]: boolean } = {}
+
+local function setQiStep(player: Player, active: boolean)
+	if active then
+		qiStepping[player] = true
+	else
+		qiStepping[player] = nil
+	end
+	local character = player.Character
+	local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
+	if humanoid then
+		humanoid:SetAttribute("QiStepBonus", if active then Config.QISTEP_SPEED_BONUS else 0)
+		humanoid:SetAttribute("QiStepping", active)
+	end
+end
+
 function QiSystem.Init()
 	local meditateSet = Net.remoteEvent("MeditateSet")
 	meditateSet.OnServerEvent:Connect(function(player, wants: unknown)
 		DataService.SetMeditating(player, wants == true)
 		DataService.PushStats(player)
+	end)
+
+	Net.remoteEvent("QiStepSet").OnServerEvent:Connect(function(player, wants: unknown)
+		local data = DataService.Get(player)
+		if data == nil then
+			return
+		end
+		if wants == true and data.qi < Config.QISTEP_DRAIN * 2 then
+			DataService.Notify(player, "Not enough qi to cover your feet.")
+			return
+		end
+		setQiStep(player, wants == true)
+	end)
+
+	Players.PlayerRemoving:Connect(function(player)
+		qiStepping[player] = nil
 	end)
 end
 
@@ -3500,9 +3811,20 @@ function QiSystem.Start()
 				end
 			end
 
-			local regen = realm.qiRegen * mods.qiRegenMult
+			-- Dao fortune from disciples adds whole multipliers to qi gain.
+			local regen = realm.qiRegen * (mods.qiRegenMult + data.masterBonus)
 			if meditating then
 				regen *= realm.meditateMult
+			end
+
+			-- Qi Step pays its toll before regen is applied.
+			if qiStepping[player] then
+				if data.qi <= Config.QISTEP_DRAIN then
+					setQiStep(player, false)
+					DataService.Notify(player, "Your qi runs thin; the light leaves your feet.")
+				else
+					data.qi -= Config.QISTEP_DRAIN
+				end
 			end
 
 			local changed = false
@@ -3531,7 +3853,715 @@ return QiSystem
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="30">
+        <Item class="ModuleScript" referent="31">
+          <Properties>
+            <string name="Name">SectService</string>
+            <string name="Source"><![CDATA[--!strict
+-- ModuleScript: ServerScriptService > Server > Systems > SectService
+-- Sects and lineage. Sects persist across servers in their own DataStore
+-- (a name registry enforces uniqueness); membership rank lives on the sect
+-- record, the player's sectId on their own save. Master-disciple bonds are
+-- offered and accepted in person (both online), and everything a client
+-- sees arrives through one SocialChanged push.
+--
+-- Ranks, highest to lowest: leader, vice, elder, inner, outer.
+
+local DataStoreService = game:GetService("DataStoreService")
+local HttpService = game:GetService("HttpService")
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TextService = game:GetService("TextService")
+
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Net = require(Shared:WaitForChild("Net"))
+local Config = require(Shared:WaitForChild("Config"))
+local RateLimit = require(Shared:WaitForChild("RateLimit"))
+
+local DataService = require(script.Parent.DataService)
+
+local SectService = {}
+
+local SECT_STORE = "Sects_v1"
+local NAME_STORE = "SectNames_v1"
+local OFFER_TTL = 90
+
+export type SectData = {
+	id: string,
+	name: string,
+	created: number,
+	ranks: { [string]: string }, -- userId (string) -> rank id
+	names: { [string]: string }, -- userId (string) -> last known display name
+}
+
+local RANK_POWER: { [string]: number } = {
+	leader = 5,
+	vice = 4,
+	elder = 3,
+	inner = 2,
+	outer = 1,
+}
+
+local RANK_NAMES: { [string]: string } = {
+	leader = "Sect Leader",
+	vice = "Vice Sect Leader",
+	elder = "Elder",
+	inner = "Inner Disciple",
+	outer = "Outer Disciple",
+}
+
+local actionLimit = RateLimit.new(6, 5)
+
+-- In-memory fallback so Studio without API access still runs everything.
+local memSects: { [string]: SectData } = {}
+local memNames: { [string]: string } = {}
+
+local sectStore: DataStore? = nil
+local nameStore: DataStore? = nil
+
+-- pendingOffers[discipleUserId] = { masterUserId, expires }
+local pendingOffers: { [number]: { masterUserId: number, expires: number } } = {}
+
+local function fail(message: string): { [string]: any }
+	return { ok = false, error = message }
+end
+
+-- ------------------------------- Storage --------------------------------
+
+local function stores(): (DataStore?, DataStore?)
+	if sectStore == nil then
+		pcall(function()
+			sectStore = DataStoreService:GetDataStore(SECT_STORE)
+		end)
+	end
+	if nameStore == nil then
+		pcall(function()
+			nameStore = DataStoreService:GetDataStore(NAME_STORE)
+		end)
+	end
+	return sectStore, nameStore
+end
+
+local function getSect(sectId: string): SectData?
+	local store = (stores())
+	if store then
+		local ok, result = pcall(function()
+			return store:GetAsync(sectId)
+		end)
+		if ok and typeof(result) == "table" then
+			return result :: SectData
+		end
+		if ok then
+			return nil
+		end
+	end
+	return memSects[sectId]
+end
+
+-- Atomic mutation; mutate returns false to abort. Returns the final record.
+local function updateSect(sectId: string, mutate: (SectData?) -> SectData?): SectData?
+	local store = (stores())
+	if store then
+		local final: SectData? = nil
+		local ok = pcall(function()
+			store:UpdateAsync(sectId, function(existing)
+				local result = mutate(if typeof(existing) == "table" then existing :: SectData else nil)
+				final = result
+				return result
+			end)
+		end)
+		if ok then
+			return final
+		end
+	end
+	local result = mutate(memSects[sectId])
+	memSects[sectId] = result :: any
+	return result
+end
+
+-- Claim a sect name (lowercased). Returns false if taken.
+local function claimName(nameKey: string, sectId: string): boolean
+	local _, store = stores()
+	if store then
+		local claimed = false
+		local ok = pcall(function()
+			store:UpdateAsync(nameKey, function(existing)
+				if existing == nil then
+					claimed = true
+					return sectId
+				end
+				claimed = existing == sectId
+				return existing
+			end)
+		end)
+		if ok then
+			return claimed
+		end
+	end
+	if memNames[nameKey] == nil or memNames[nameKey] == sectId then
+		memNames[nameKey] = sectId
+		return true
+	end
+	return false
+end
+
+local function releaseName(nameKey: string)
+	local _, store = stores()
+	if store then
+		local ok = pcall(function()
+			store:RemoveAsync(nameKey)
+		end)
+		if ok then
+			return
+		end
+	end
+	memNames[nameKey] = nil
+end
+
+local function lookupSectIdByName(nameKey: string): string?
+	local _, store = stores()
+	if store then
+		local ok, result = pcall(function()
+			return store:GetAsync(nameKey)
+		end)
+		if ok then
+			return if typeof(result) == "string" then result else nil
+		end
+	end
+	return memNames[nameKey]
+end
+
+-- ------------------------------ The push --------------------------------
+
+function SectService.PushSocial(player: Player)
+	local data = DataService.Get(player)
+	if data == nil then
+		return
+	end
+
+	local sectPayload: { [string]: any }? = nil
+	if data.sectId then
+		local sect = getSect(data.sectId :: string)
+		local myRank = if sect then sect.ranks[tostring(player.UserId)] else nil
+		if sect == nil or myRank == nil then
+			data.sectId = nil -- disbanded, or we were cast out
+		else
+			local members = {}
+			for userIdKey, rank in sect.ranks do
+				local userId = tonumber(userIdKey) or 0
+				table.insert(members, {
+					userId = userId,
+					name = sect.names[userIdKey] or "?",
+					rank = rank,
+					rankName = RANK_NAMES[rank] or rank,
+					power = RANK_POWER[rank] or 0,
+					online = Players:GetPlayerByUserId(userId) ~= nil,
+				})
+			end
+			table.sort(members, function(a, b)
+				return (a.power :: number) > (b.power :: number)
+			end)
+			sectPayload = {
+				id = sect.id,
+				name = sect.name,
+				myRank = myRank,
+				myRankName = RANK_NAMES[myRank] or myRank,
+				members = members,
+			}
+		end
+	end
+
+	local disciples = {}
+	for _, disciple in data.disciples do
+		table.insert(disciples, {
+			userId = disciple.userId,
+			name = disciple.name,
+			online = Players:GetPlayerByUserId(disciple.userId) ~= nil,
+		})
+	end
+
+	Net.remoteEvent("SocialChanged"):FireClient(player, {
+		sect = sectPayload,
+		masterName = data.masterName,
+		disciples = disciples,
+		discipleCap = Config.MAX_DISCIPLES,
+		masterBonus = data.masterBonus,
+	})
+end
+
+local function pushIfOnline(userId: number)
+	local player = Players:GetPlayerByUserId(userId)
+	if player then
+		SectService.PushSocial(player)
+	end
+end
+
+-- ------------------------------- Sects ----------------------------------
+
+local function sanitizeSectName(player: Player, raw: unknown): (string?, string?)
+	if typeof(raw) ~= "string" then
+		return nil, "Bad request"
+	end
+	local name = (raw :: string):gsub("^%s+", ""):gsub("%s+$", ""):gsub("%s+", " ")
+	if #name < Config.SECT_NAME_MIN or #name > Config.SECT_NAME_MAX then
+		return nil, `Sect names run {Config.SECT_NAME_MIN} to {Config.SECT_NAME_MAX} characters.`
+	end
+	if name:match("^[%w%s'%-]+$") == nil then
+		return nil, "Letters, numbers, spaces, hyphens and apostrophes only."
+	end
+	local filtered = name
+	pcall(function()
+		local obj = TextService:FilterStringAsync(name, player.UserId)
+		filtered = obj:GetNonChatStringForBroadcastAsync()
+	end)
+	if filtered:find("#") then
+		return nil, "That name does not pass the heavens' censors."
+	end
+	return filtered, nil
+end
+
+local function createSect(player: Player, payload: unknown): { [string]: any }
+	if not actionLimit:Allow(player.UserId) then
+		return fail("Too many requests")
+	end
+	local data = DataService.Get(player)
+	if data == nil then
+		return fail("Data not loaded yet")
+	end
+	if data.sectId then
+		return fail("You already belong to a sect.")
+	end
+	if typeof(payload) ~= "table" then
+		return fail("Bad request")
+	end
+	local name, reason = sanitizeSectName(player, (payload :: { [string]: unknown }).name)
+	if name == nil then
+		return fail(reason or "Bad name")
+	end
+	if data.spiritStones < Config.SECT_CREATE_COST then
+		return fail(`Founding a sect takes {Config.SECT_CREATE_COST} spirit stones.`)
+	end
+
+	local sectId = "sect_" .. HttpService:GenerateGUID(false)
+	local nameKey = (name :: string):lower()
+	if not claimName(nameKey, sectId) then
+		return fail("A sect already bears that name.")
+	end
+
+	updateSect(sectId, function()
+		return {
+			id = sectId,
+			name = name :: string,
+			created = os.time(),
+			ranks = { [tostring(player.UserId)] = "leader" },
+			names = { [tostring(player.UserId)] = player.Name },
+		}
+	end)
+
+	data.spiritStones -= Config.SECT_CREATE_COST
+	data.sectId = sectId
+	DataService.Notify(player, `The {name} stands. You are its Sect Leader.`, Color3.fromRGB(255, 215, 120))
+	DataService.PushStats(player)
+	DataService.PushInventory(player)
+	SectService.PushSocial(player)
+	return { ok = true }
+end
+
+local function joinSect(player: Player, payload: unknown): { [string]: any }
+	if not actionLimit:Allow(player.UserId) then
+		return fail("Too many requests")
+	end
+	local data = DataService.Get(player)
+	if data == nil then
+		return fail("Data not loaded yet")
+	end
+	if data.sectId then
+		return fail("You already belong to a sect.")
+	end
+	if typeof(payload) ~= "table" then
+		return fail("Bad request")
+	end
+	local raw = (payload :: { [string]: unknown }).name
+	if typeof(raw) ~= "string" then
+		return fail("Bad request")
+	end
+	local sectId = lookupSectIdByName((raw :: string):gsub("^%s+", ""):gsub("%s+$", ""):lower())
+	if sectId == nil then
+		return fail("No sect bears that name.")
+	end
+
+	local joined = false
+	local sect = updateSect(sectId, function(existing)
+		if existing == nil then
+			return nil
+		end
+		local count = 0
+		for _ in existing.ranks do
+			count += 1
+		end
+		if count >= Config.SECT_MEMBER_CAP then
+			return existing
+		end
+		existing.ranks[tostring(player.UserId)] = "outer"
+		existing.names[tostring(player.UserId)] = player.Name
+		joined = true
+		return existing
+	end)
+	if sect == nil then
+		return fail("That sect has scattered to the winds.")
+	end
+	if not joined then
+		return fail("That sect is full.")
+	end
+	data.sectId = sectId
+	DataService.Notify(player, `You enter the {sect.name} as an Outer Disciple.`)
+	SectService.PushSocial(player)
+	-- Refresh online sect-mates' member lists.
+	for userIdKey in sect.ranks do
+		pushIfOnline(tonumber(userIdKey) or 0)
+	end
+	return { ok = true }
+end
+
+local function leaveSect(player: Player, _payload: unknown): { [string]: any }
+	if not actionLimit:Allow(player.UserId) then
+		return fail("Too many requests")
+	end
+	local data = DataService.Get(player)
+	if data == nil or data.sectId == nil then
+		return fail("You belong to no sect.")
+	end
+	local sectId = data.sectId :: string
+	local blocked = false
+	local sect = updateSect(sectId, function(existing)
+		if existing == nil then
+			return nil
+		end
+		local key = tostring(player.UserId)
+		local memberCount = 0
+		for _ in existing.ranks do
+			memberCount += 1
+		end
+		if existing.ranks[key] == "leader" and memberCount > 1 then
+			blocked = true
+			return existing
+		end
+		existing.ranks[key] = nil
+		existing.names[key] = nil
+		return existing
+	end)
+	if blocked then
+		return fail("A Sect Leader must pass on leadership (or disband) before leaving.")
+	end
+	data.sectId = nil
+	DataService.Notify(player, "You walk your own road once more.")
+	SectService.PushSocial(player)
+	if sect then
+		for userIdKey in sect.ranks do
+			pushIfOnline(tonumber(userIdKey) or 0)
+		end
+		local remaining = 0
+		for _ in sect.ranks do
+			remaining += 1
+		end
+		if remaining == 0 then
+			releaseName(sect.name:lower())
+		end
+	end
+	return { ok = true }
+end
+
+local function disbandSect(player: Player, _payload: unknown): { [string]: any }
+	if not actionLimit:Allow(player.UserId) then
+		return fail("Too many requests")
+	end
+	local data = DataService.Get(player)
+	if data == nil or data.sectId == nil then
+		return fail("You belong to no sect.")
+	end
+	local sectId = data.sectId :: string
+	local sect = getSect(sectId)
+	if sect == nil then
+		data.sectId = nil
+		SectService.PushSocial(player)
+		return fail("That sect is already gone.")
+	end
+	if sect.ranks[tostring(player.UserId)] ~= "leader" then
+		return fail("Only the Sect Leader may disband the sect.")
+	end
+	updateSect(sectId, function()
+		return nil
+	end)
+	releaseName(sect.name:lower())
+	for userIdKey in sect.ranks do
+		local member = Players:GetPlayerByUserId(tonumber(userIdKey) or 0)
+		local memberData = if member then DataService.Get(member) else nil
+		if member and memberData then
+			memberData.sectId = nil
+			DataService.Notify(member, `The {sect.name} has been disbanded.`)
+			SectService.PushSocial(member)
+		end
+		-- Offline members clear their stale sectId on next PushSocial.
+	end
+	return { ok = true }
+end
+
+local function setSectRank(player: Player, payload: unknown): { [string]: any }
+	if not actionLimit:Allow(player.UserId) then
+		return fail("Too many requests")
+	end
+	local data = DataService.Get(player)
+	if data == nil or data.sectId == nil then
+		return fail("You belong to no sect.")
+	end
+	if typeof(payload) ~= "table" then
+		return fail("Bad request")
+	end
+	local request = payload :: { [string]: unknown }
+	local targetUserId = request.targetUserId
+	local newRank = request.rank
+	if typeof(targetUserId) ~= "number" or typeof(newRank) ~= "string" then
+		return fail("Bad request")
+	end
+	if newRank ~= "kick" and RANK_POWER[newRank :: string] == nil then
+		return fail("Unknown rank")
+	end
+	if targetUserId == player.UserId then
+		return fail("One does not promote oneself.")
+	end
+
+	local sectId = data.sectId :: string
+	local errorMessage: string? = nil
+	local sect = updateSect(sectId, function(existing)
+		if existing == nil then
+			errorMessage = "That sect has scattered."
+			return nil
+		end
+		local actorRank = existing.ranks[tostring(player.UserId)]
+		local targetRank = existing.ranks[tostring(targetUserId)]
+		local actorPower = RANK_POWER[actorRank or ""] or 0
+		local targetPower = RANK_POWER[targetRank or ""] or 0
+		if targetRank == nil then
+			errorMessage = "They are not of this sect."
+			return existing
+		end
+		if actorPower < RANK_POWER.vice then
+			errorMessage = "Only the Sect Leader and Vice Sect Leader manage ranks."
+			return existing
+		end
+		if actorPower <= targetPower then
+			errorMessage = "You cannot judge one who stands at or above your station."
+			return existing
+		end
+		if newRank == "kick" then
+			existing.ranks[tostring(targetUserId)] = nil
+			existing.names[tostring(targetUserId)] = nil
+			return existing
+		end
+		if newRank == "leader" then
+			if actorRank ~= "leader" then
+				errorMessage = "Only the Sect Leader may pass on leadership."
+				return existing
+			end
+			existing.ranks[tostring(targetUserId)] = "leader"
+			existing.ranks[tostring(player.UserId)] = "vice"
+			return existing
+		end
+		if RANK_POWER[newRank :: string] >= actorPower then
+			errorMessage = "You cannot raise another to your own station or above."
+			return existing
+		end
+		existing.ranks[tostring(targetUserId)] = newRank :: string
+		return existing
+	end)
+	if errorMessage then
+		return fail(errorMessage)
+	end
+	if sect == nil then
+		data.sectId = nil
+		SectService.PushSocial(player)
+		return fail("That sect has scattered.")
+	end
+
+	local target = Players:GetPlayerByUserId(targetUserId :: number)
+	if newRank == "kick" then
+		local targetData = if target then DataService.Get(target) else nil
+		if target and targetData then
+			targetData.sectId = nil
+			DataService.Notify(target, `You have been cast out of the {sect.name}.`)
+			SectService.PushSocial(target)
+		end
+	elseif target then
+		DataService.Notify(target, `Within the {sect.name}, you are now {RANK_NAMES[newRank :: string]}.`)
+	end
+	for userIdKey in sect.ranks do
+		pushIfOnline(tonumber(userIdKey) or 0)
+	end
+	SectService.PushSocial(player)
+	return { ok = true }
+end
+
+-- --------------------------- Master & disciple ---------------------------
+
+local function offerDiscipleship(player: Player, payload: unknown): { [string]: any }
+	if not actionLimit:Allow(player.UserId) then
+		return fail("Too many requests")
+	end
+	local data = DataService.Get(player)
+	if data == nil then
+		return fail("Data not loaded yet")
+	end
+	if typeof(payload) ~= "table" then
+		return fail("Bad request")
+	end
+	local targetName = (payload :: { [string]: unknown }).targetName
+	if typeof(targetName) ~= "string" then
+		return fail("Bad request")
+	end
+	if #data.disciples >= Config.MAX_DISCIPLES then
+		return fail(`You may guide at most {Config.MAX_DISCIPLES} disciples.`)
+	end
+
+	local target: Player? = nil
+	local lowered = (targetName :: string):lower()
+	for _, candidate in Players:GetPlayers() do
+		if candidate.Name:lower() == lowered or candidate.DisplayName:lower() == lowered then
+			target = candidate
+			break
+		end
+	end
+	if target == nil then
+		return fail("No cultivator by that name walks this land right now.")
+	end
+	local targetPlayer = target :: Player
+	if targetPlayer.UserId == player.UserId then
+		return fail("One cannot be one's own master. Many have tried.")
+	end
+	local targetData = DataService.Get(targetPlayer)
+	if targetData == nil then
+		return fail("They are still arriving in this world.")
+	end
+	if targetData.masterUserId ~= nil then
+		return fail("They already follow a master.")
+	end
+	if data.masterUserId == targetPlayer.UserId then
+		return fail("Your own master? The heavens would laugh.")
+	end
+	for _, disciple in data.disciples do
+		if disciple.userId == targetPlayer.UserId then
+			return fail("They are already your disciple.")
+		end
+	end
+
+	pendingOffers[targetPlayer.UserId] = { masterUserId = player.UserId, expires = os.clock() + OFFER_TTL }
+	Net.remoteEvent("DiscipleOffer"):FireClient(targetPlayer, {
+		masterUserId = player.UserId,
+		masterName = player.Name,
+	})
+	DataService.Notify(player, `You have offered to take {targetPlayer.Name} as your disciple.`)
+	return { ok = true }
+end
+
+local function respondDiscipleship(player: Player, payload: unknown): { [string]: any }
+	local data = DataService.Get(player)
+	if data == nil then
+		return fail("Data not loaded yet")
+	end
+	local offer = pendingOffers[player.UserId]
+	pendingOffers[player.UserId] = nil
+	if offer == nil or os.clock() > offer.expires then
+		return fail("The offer has lapsed.")
+	end
+	local accept = typeof(payload) == "table" and (payload :: { [string]: unknown }).accept == true
+
+	local master = Players:GetPlayerByUserId(offer.masterUserId)
+	local masterData = if master then DataService.Get(master) else nil
+	if not accept then
+		if master then
+			DataService.Notify(master, `{player.Name} has declined your guidance.`)
+		end
+		return { ok = true }
+	end
+	if master == nil or masterData == nil then
+		return fail("Your would-be master has left this world.")
+	end
+	if data.masterUserId ~= nil then
+		return fail("You already follow a master.")
+	end
+	if #masterData.disciples >= Config.MAX_DISCIPLES then
+		return fail("Their courtyard is full.")
+	end
+
+	data.masterUserId = master.UserId
+	data.masterName = master.Name
+	table.insert(masterData.disciples, { userId = player.UserId, name = player.Name })
+	DataService.Notify(player, `You kneel and rise a disciple of {master.Name}.`, Color3.fromRGB(255, 215, 120))
+	DataService.Notify(master, `{player.Name} is now your disciple.`, Color3.fromRGB(255, 215, 120))
+	SectService.PushSocial(player)
+	SectService.PushSocial(master)
+	return { ok = true }
+end
+
+local function renounceMaster(player: Player, _payload: unknown): { [string]: any }
+	if not actionLimit:Allow(player.UserId) then
+		return fail("Too many requests")
+	end
+	local data = DataService.Get(player)
+	if data == nil then
+		return fail("Data not loaded yet")
+	end
+	if data.masterUserId == nil then
+		return fail("You follow no master.")
+	end
+	local masterUserId = data.masterUserId :: number
+	data.masterUserId = nil
+	data.masterName = nil
+
+	local master = Players:GetPlayerByUserId(masterUserId)
+	local masterData = if master then DataService.Get(master) else nil
+	if master and masterData then
+		for index, disciple in masterData.disciples do
+			if disciple.userId == player.UserId then
+				table.remove(masterData.disciples, index)
+				break
+			end
+		end
+		DataService.Notify(master, `{player.Name} has left your tutelage.`)
+		SectService.PushSocial(master)
+	else
+		DataService.MailRemoveDisciple(masterUserId, player.UserId)
+	end
+	DataService.Notify(player, "You bow once, and walk on alone.")
+	SectService.PushSocial(player)
+	return { ok = true }
+end
+
+-- ------------------------------ Lifecycle -------------------------------
+
+function SectService.Init()
+	Net.remoteFunction("CreateSect").OnServerInvoke = createSect
+	Net.remoteFunction("JoinSect").OnServerInvoke = joinSect
+	Net.remoteFunction("LeaveSect").OnServerInvoke = leaveSect
+	Net.remoteFunction("DisbandSect").OnServerInvoke = disbandSect
+	Net.remoteFunction("SetSectRank").OnServerInvoke = setSectRank
+	Net.remoteFunction("OfferDiscipleship").OnServerInvoke = offerDiscipleship
+	Net.remoteFunction("RespondDiscipleship").OnServerInvoke = respondDiscipleship
+	Net.remoteFunction("RenounceMaster").OnServerInvoke = renounceMaster
+
+	DataService.ObserveLoaded(function(player)
+		SectService.PushSocial(player)
+	end)
+
+	Players.PlayerRemoving:Connect(function(player)
+		pendingOffers[player.UserId] = nil
+		actionLimit:Forget(player.UserId)
+	end)
+end
+
+return SectService
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="32">
           <Properties>
             <string name="Name">TechniqueService</string>
             <string name="Source"><![CDATA[--!strict
@@ -3698,6 +4728,8 @@ local function createTechnique(player: Player, payload: unknown): { [string]: an
 		form = formId,
 		element = elementId,
 		power = math.floor(power),
+		masteryXp = 0,
+		origin = nil,
 	}
 	table.insert(data.techniques, technique)
 
@@ -3780,6 +4812,78 @@ local function equipTechnique(player: Player, payload: unknown): { [string]: any
 		data.slots[tostring(slot)] = nil
 	end
 	DataService.PushTechniques(player)
+	return { ok = true }
+end
+
+-- ----------------------------- Inheritance ------------------------------
+
+-- Pass a MASTERED technique down to one of your own disciples. The copy
+-- starts at mastery zero: an inherited manual still has to be practiced.
+local function teachTechnique(player: Player, payload: unknown): { [string]: any }
+	if not editLimit:Allow(player.UserId) then
+		return fail("Too many requests")
+	end
+	local data = DataService.Get(player)
+	if data == nil then
+		return fail("Data not loaded yet")
+	end
+	if typeof(payload) ~= "table" then
+		return fail("Bad request")
+	end
+	local request = payload :: { [string]: unknown }
+	local id = request.id
+	local targetUserId = request.targetUserId
+	if typeof(id) ~= "string" or typeof(targetUserId) ~= "number" then
+		return fail("Bad request")
+	end
+
+	local technique = findTechnique(data, id)
+	if technique == nil then
+		return fail("No such technique")
+	end
+	if TechniqueMath.masteryLevel(technique.masteryXp) < TechniqueMath.MASTERY_MAX then
+		return fail("You must fully master an art before passing it down.")
+	end
+
+	local target = Players:GetPlayerByUserId(targetUserId)
+	local targetData = if target then DataService.Get(target) else nil
+	if target == nil or targetData == nil then
+		return fail("Your disciple must be here, in this world, to receive an inheritance.")
+	end
+	if targetData.masterUserId ~= player.UserId then
+		return fail("An inheritance passes only from master to disciple.")
+	end
+	if #targetData.techniques >= Config.MAX_TECHNIQUES then
+		return fail(`{target.Name} already holds {Config.MAX_TECHNIQUES} techniques.`)
+	end
+	for _, owned in targetData.techniques do
+		if owned.name == technique.name and owned.form == technique.form and owned.element == technique.element then
+			return fail(`{target.Name} already knows {technique.name}.`)
+		end
+	end
+
+	local inherited: Types.Technique = {
+		id = HttpService:GenerateGUID(false),
+		name = technique.name,
+		form = technique.form,
+		element = technique.element,
+		power = technique.power,
+		masteryXp = 0,
+		origin = technique.origin or player.Name,
+	}
+	table.insert(targetData.techniques, inherited)
+	for slot = 1, Config.SLOT_COUNT do
+		if targetData.slots[tostring(slot)] == nil then
+			targetData.slots[tostring(slot)] = inherited.id
+			break
+		end
+	end
+
+	DataService.Notify(target, `Your master {player.Name} has passed down {technique.name}!`, Color3.fromRGB(255, 215, 120))
+	DataService.Notify(player, `You have passed {technique.name} down to {target.Name}.`)
+	-- Teaching refines the teacher's own understanding.
+	QiSystem.AddXp(player, 100)
+	DataService.PushTechniques(target)
 	return { ok = true }
 end
 
@@ -3934,7 +5038,8 @@ local function castTechnique(player: Player, slotArg: unknown, aimArg: unknown)
 		DataService.Notify(player, "Not enough qi.")
 		return
 	end
-	userCooldowns[technique.id] = now + stats.cooldown * mods.cooldownMult
+	local masteryLevel = TechniqueMath.masteryLevel(technique.masteryXp)
+	userCooldowns[technique.id] = now + stats.cooldown * mods.cooldownMult * TechniqueMath.masteryCooldownMult(masteryLevel)
 	DataService.SetMeditating(player, false)
 
 	-- Aim
@@ -3948,6 +5053,7 @@ local function castTechnique(player: Player, slotArg: unknown, aimArg: unknown)
 		* (mods.categoryDamage[form.category] or 1)
 		* (mods.elementDamage[element.id] or 1)
 		* weaponMult
+		* TechniqueMath.masteryDamageMult(masteryLevel)
 
 	-- Execute by kind. Movement application happens on the caster's client
 	-- (it owns its character's physics); everything else resolves here.
@@ -3983,13 +5089,29 @@ local function castTechnique(player: Player, slotArg: unknown, aimArg: unknown)
 	if kind == "speed_buff" then
 		task.spawn(function()
 			humanoid.WalkSpeed += stats.speed
+			humanoid:SetAttribute("SpeedFlat", stats.speed)
 			task.wait(stats.duration)
 			CombatService.RefreshMods(player)
 		end)
 	end
 
-	-- Practicing an art tempers the practitioner.
+	-- Practicing an art tempers the practitioner, and the art itself.
 	QiSystem.AddXp(player, 1 + technique.power)
+	if masteryLevel < TechniqueMath.MASTERY_MAX then
+		technique.masteryXp += 2 + technique.power
+		local newLevel = TechniqueMath.masteryLevel(technique.masteryXp)
+		if newLevel > masteryLevel then
+			if newLevel >= TechniqueMath.MASTERY_MAX then
+				DataService.Notify(player, `You have MASTERED {technique.name}. It may now be passed to a disciple.`, Color3.fromRGB(255, 215, 120))
+			else
+				DataService.Notify(player, `{technique.name} reaches Mastery {newLevel}.`)
+			end
+			DataService.PushTechniques(player)
+		elseif technique.masteryXp % 10 < 3 then
+			-- Occasional push so open panels stay roughly current.
+			DataService.PushTechniques(player)
+		end
+	end
 
 	techniqueVFX:FireAllClients({
 		kind = "cast",
@@ -4013,6 +5135,7 @@ function TechniqueService.Init()
 	Net.remoteFunction("CreateTechnique").OnServerInvoke = createTechnique
 	Net.remoteFunction("DeleteTechnique").OnServerInvoke = deleteTechnique
 	Net.remoteFunction("EquipTechnique").OnServerInvoke = equipTechnique
+	Net.remoteFunction("TeachTechnique").OnServerInvoke = teachTechnique
 	Net.remoteEvent("CastTechnique").OnServerEvent:Connect(castTechnique)
 
 	Players.PlayerRemoving:Connect(function(player)
@@ -4026,11 +5149,11 @@ return TechniqueService
 ]]></string>
           </Properties>
         </Item>
-        <Item class="Folder" referent="31">
+        <Item class="Folder" referent="33">
           <Properties>
             <string name="Name">World</string>
           </Properties>
-          <Item class="ModuleScript" referent="32">
+          <Item class="ModuleScript" referent="34">
             <Properties>
               <string name="Name">BuildKit</string>
               <string name="Source"><![CDATA[--!strict
@@ -4482,7 +5605,7 @@ return BuildKit
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="33">
+          <Item class="ModuleScript" referent="35">
             <Properties>
               <string name="Name">Cities</string>
               <string name="Source"><![CDATA[--!strict
@@ -4682,7 +5805,7 @@ return Cities
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="34">
+          <Item class="ModuleScript" referent="36">
             <Properties>
               <string name="Name">Overworld</string>
               <string name="Source"><![CDATA[--!strict
@@ -5028,7 +6151,7 @@ return Overworld
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="35">
+          <Item class="ModuleScript" referent="37">
             <Properties>
               <string name="Name">Underworld</string>
               <string name="Source"><![CDATA[--!strict
@@ -5300,7 +6423,7 @@ return Underworld
             </Properties>
           </Item>
         </Item>
-        <Item class="ModuleScript" referent="36">
+        <Item class="ModuleScript" referent="38">
           <Properties>
             <string name="Name">WorldBuilder</string>
             <string name="Source"><![CDATA[--!strict
@@ -5338,21 +6461,21 @@ return WorldBuilder
       </Item>
     </Item>
   </Item>
-  <Item class="SoundService" referent="37">
+  <Item class="SoundService" referent="39">
     <Properties>
       <string name="Name">SoundService</string>
       <bool name="RespectFilteringEnabled">true</bool>
     </Properties>
   </Item>
-  <Item class="StarterPlayer" referent="38">
+  <Item class="StarterPlayer" referent="40">
     <Properties>
       <string name="Name">StarterPlayer</string>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="39">
+    <Item class="StarterPlayerScripts" referent="41">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="LocalScript" referent="40">
+      <Item class="LocalScript" referent="42">
         <Properties>
           <string name="Name">Client</string>
           <string name="Source"><![CDATA[--!strict
@@ -5403,11 +6526,11 @@ end
 print("[Client] All controllers started")
 ]]></string>
         </Properties>
-        <Item class="Folder" referent="41">
+        <Item class="Folder" referent="43">
           <Properties>
             <string name="Name">Controllers</string>
           </Properties>
-          <Item class="ModuleScript" referent="42">
+          <Item class="ModuleScript" referent="44">
             <Properties>
               <string name="Name">CraftingController</string>
               <string name="Source"><![CDATA[--!strict
@@ -5525,7 +6648,7 @@ return CraftingController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="43">
+          <Item class="ModuleScript" referent="45">
             <Properties>
               <string name="Name">DestinyController</string>
               <string name="Source"><![CDATA[--!strict
@@ -5545,6 +6668,7 @@ local Talents = require(Shared:WaitForChild("Data"):WaitForChild("Talents"))
 
 local UiKit = require(script.Parent.Parent.Modules.UiKit)
 local ClientState = require(script.Parent.Parent.Modules.ClientState)
+local Panels = require(script.Parent.Parent.Modules.Panels)
 
 local DestinyController = {}
 
@@ -5720,7 +6844,8 @@ local function spin(kind: "race" | "talent")
 end
 
 function DestinyController.Init()
-	window = UiKit.window("Destiny", "Destiny: Bloodlines & Talents", UDim2.fromOffset(780, 560), 40)
+	window = UiKit.window("Destiny", "Destiny", UDim2.fromOffset(780, 560), 40)
+	Panels.register("destiny", window.toggle)
 	local body = window.body
 
 	raceSpinButton = UiKit.button(body, "SPIN RACE", UDim2.fromOffset(370, 44), UDim2.fromOffset(0, 0), function()
@@ -5768,7 +6893,7 @@ return DestinyController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="44">
+          <Item class="ModuleScript" referent="46">
             <Properties>
               <string name="Name">DialogueController</string>
               <string name="Source"><![CDATA[--!strict
@@ -5876,15 +7001,18 @@ return DialogueController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="45">
+          <Item class="ModuleScript" referent="47">
             <Properties>
               <string name="Name">HudController</string>
               <string name="Source"><![CDATA[--!strict
 -- ModuleScript: StarterPlayer > StarterPlayerScripts > Client > Controllers > HudController
--- The always-on HUD: qi and cultivation bars, realm/path/race line, spirit
--- stones, the 6-slot technique hotbar with cooldown sweeps, toast
--- notifications, and the meditation indicator.
+-- The always-on HUD, laid out after the ink-kit reference: a realm
+-- medallion with a vertical hanzi banner top-left, name and brush-stroke
+-- bars beside it, a circular icon menu bar underneath (Updates first), the
+-- ink-slot technique hotbar, banner-style notifications, and the
+-- meditation indicator.
 
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 
@@ -5899,12 +7027,20 @@ local Elements = require(Shared:WaitForChild("Data"):WaitForChild("Elements"))
 local UiKit = require(script.Parent.Parent.Modules.UiKit)
 local ClientState = require(script.Parent.Parent.Modules.ClientState)
 local ClientSettings = require(script.Parent.Parent.Modules.ClientSettings)
+local Panels = require(script.Parent.Parent.Modules.Panels)
 
 local HudController = {}
 
-local qiBar: UiKit.Bar
-local xpBar: UiKit.Bar
+local player = Players.LocalPlayer
+
+local realmMedallion: TextLabel
+local pathBanner: TextLabel
+local nameLabel: TextLabel
 local identityLabel: TextLabel
+local qiBar: UiKit.Bar
+local qiValue: TextLabel
+local xpBar: UiKit.Bar
+local xpValue: TextLabel
 local stonesLabel: TextLabel
 local meditateLabel: TextLabel
 local hintsLabel: TextLabel
@@ -5913,21 +7049,35 @@ local toastArea: Frame
 type SlotUi = { root: Frame, name: TextLabel, key: TextLabel, cooldown: Frame }
 local slotUis: { SlotUi } = {}
 
+local PATH_HANZI: { [string]: string } = {
+	orthodox = "正\n道",
+	unorthodox = "散\n修",
+	demonic = "魔\n道",
+}
+
 local function renderStats()
 	local stats = ClientState.stats
 	if stats == nil then
 		return
 	end
-	qiBar.set(math.clamp(stats.qi / math.max(stats.maxQi, 1), 0, 1), `Qi {math.floor(stats.qi)} / {stats.maxQi}`)
-	xpBar.set(math.clamp(stats.cultivationXp / math.max(stats.breakthroughXp, 1), 0, 1),
-		`Cultivation {stats.cultivationXp} / {stats.breakthroughXp}`)
+	realmMedallion.Text = tostring(stats.realm)
+	pathBanner.Text = PATH_HANZI[stats.path or ""] or "游\n侠"
+
+	qiBar.set(math.clamp(stats.qi / math.max(stats.maxQi, 1), 0, 1), "")
+	qiValue.Text = `{math.floor(stats.qi)} / {stats.maxQi}`
+	xpBar.set(math.clamp(stats.cultivationXp / math.max(stats.breakthroughXp, 1), 0, 1), "")
+	xpValue.Text = `{stats.cultivationXp} / {stats.breakthroughXp}`
 
 	local race = Races.get(stats.race)
 	local raceName = if race then `{race.name} {race.hanzi}` else stats.race
 	local pathDef = if stats.path then Paths[stats.path :: string] else nil
 	local pathName = if pathDef then pathDef.name else "Wanderer"
-	identityLabel.Text = `{stats.realmName}  ·  {pathName}  ·  {raceName}`
-	stonesLabel.Text = `Spirit Stones: {stats.spiritStones}`
+	local social = ClientState.social
+	local sectSuffix = if social and social.sect then `  ·  {social.sect.name}` else ""
+	identityLabel.Text = `{stats.realmName}  ·  {pathName}  ·  {raceName}{sectSuffix}`
+
+	local bonus = if stats.masterBonus and stats.masterBonus > 0 then `   Dao Fortune +{stats.masterBonus}x qi` else ""
+	stonesLabel.Text = `Spirit Stones: {stats.spiritStones}{bonus}`
 	meditateLabel.Visible = stats.meditating
 end
 
@@ -5937,13 +7087,13 @@ local function renderSlots()
 		local ui = slotUis[slot]
 		local techniqueId = if techniques then techniques.slots[tostring(slot)] else nil
 		local name = ""
-		local color = UiKit.Colors.textDim
+		local color = UiKit.Colors.panel
 		if techniques and techniqueId then
 			for _, technique in techniques.techniques do
 				if technique.id == techniqueId then
 					name = technique.name
 					local element = Elements.get(technique.element)
-					if element then
+					if element and element.id ~= "none" then
 						color = element.color
 					end
 					local form = Forms.get(technique.form)
@@ -5956,7 +7106,7 @@ local function renderSlots()
 		end
 		ui.name.Text = name
 		ui.name.TextColor3 = color
-		ui.root.BackgroundTransparency = if name == "" then 0.6 else 0.15
+		ui.root.BackgroundTransparency = if name == "" then 0.75 else 0.12
 	end
 end
 
@@ -5976,23 +7126,43 @@ local function startCooldownSweep(slot: number, duration: number)
 	tween:Play()
 end
 
+-- Banner-style notification cards, per the kit's notification blocks.
 local function toast(text: string, color: Color3?)
-	local label = Instance.new("TextLabel")
-	label.Size = UDim2.new(1, 0, 0, 24)
-	label.BackgroundTransparency = 1
-	label.Text = text
-	label.TextColor3 = color or UiKit.Colors.text
-	label.TextStrokeTransparency = 0.4
-	label.TextStrokeColor3 = UiKit.Colors.ink
-	label.TextSize = 16
-	label.Font = Enum.Font.GothamBold
-	label.TextXAlignment = Enum.TextXAlignment.Center
-	label.LayoutOrder = -os.clock() -- newest on top
-	label.Parent = toastArea
+	-- Server accent colors are tuned for dark grounds; pull bright ones
+	-- toward ink so they stay readable on paper.
+	if color then
+		local luminance = (color.R + color.G + color.B) / 3
+		if luminance > 0.55 then
+			color = color:Lerp(UiKit.Colors.ink, 0.55)
+		end
+	end
+	local card = Instance.new("Frame")
+	card.Size = UDim2.new(1, 0, 0, 30)
+	card.BackgroundColor3 = UiKit.Colors.panel
+	card.BackgroundTransparency = 0.08
+	card.BorderSizePixel = 0
+	card.LayoutOrder = -math.floor(os.clock() * 100)
+	card.Parent = toastArea
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 4)
+	corner.Parent = card
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = UiKit.Colors.ink
+	stroke.Thickness = 1.4
+	stroke.Parent = card
+	local label = UiKit.label(card, text, UDim2.new(1, -20, 1, 0), UDim2.fromOffset(10, 0), {
+		textSize = 14,
+		color = color or UiKit.Colors.ink,
+		bold = true,
+		xalign = Enum.TextXAlignment.Center,
+	})
+	label.TextTruncate = Enum.TextTruncate.AtEnd
 	task.delay(4, function()
-		local fade = TweenService:Create(label, TweenInfo.new(0.6), { TextTransparency = 1, TextStrokeTransparency = 1 })
+		local fade = TweenService:Create(label, TweenInfo.new(0.5), { TextTransparency = 1 })
+		TweenService:Create(card, TweenInfo.new(0.5), { BackgroundTransparency = 1 }):Play()
+		TweenService:Create(stroke, TweenInfo.new(0.5), { Transparency = 1 }):Play()
 		fade.Completed:Once(function()
-			label:Destroy()
+			card:Destroy()
 		end)
 		fade:Play()
 	end)
@@ -6001,24 +7171,93 @@ end
 function HudController.Init()
 	local screen = UiKit.screen("Hud", 10)
 
-	-- Bottom-left vitals.
-	local vitals = UiKit.frame(screen, UDim2.fromOffset(300, 96), UDim2.new(0, 16, 1, -190), UiKit.Colors.panel)
-	vitals.BackgroundTransparency = 0.25
-	identityLabel = UiKit.label(vitals, "", UDim2.new(1, -16, 0, 18), UDim2.fromOffset(8, 4), {
-		textSize = 13,
-		color = UiKit.Colors.gold,
+	-- ------------------------ Top-left identity ------------------------
+	-- Realm medallion: a brush circle holding the realm number.
+	local medallion = UiKit.frame(screen, UDim2.fromOffset(56, 56), UDim2.fromOffset(16, 14))
+	local medallionCorner = medallion:FindFirstChildOfClass("UICorner")
+	if medallionCorner then
+		medallionCorner.CornerRadius = UDim.new(1, 0)
+	end
+	local medallionStroke = Instance.new("UIStroke")
+	medallionStroke.Color = UiKit.Colors.ink
+	medallionStroke.Thickness = 2.4
+	medallionStroke.Parent = medallion
+	realmMedallion = UiKit.label(medallion, "1", UDim2.fromScale(1, 1), UDim2.fromScale(0, 0), {
+		textSize = 28,
+		title = true,
+		bold = true,
+		xalign = Enum.TextXAlignment.Center,
 	})
-	qiBar = UiKit.bar(vitals, UDim2.new(1, -16, 0, 22), UDim2.fromOffset(8, 26), UiKit.Colors.qi)
-	xpBar = UiKit.bar(vitals, UDim2.new(1, -16, 0, 22), UDim2.fromOffset(8, 52), UiKit.Colors.xp)
-	stonesLabel = UiKit.label(vitals, "", UDim2.new(1, -16, 0, 16), UDim2.fromOffset(8, 76), {
+
+	-- Vertical hanzi banner under the medallion: your path, brush-written.
+	local banner = UiKit.frame(screen, UDim2.fromOffset(30, 74), UDim2.fromOffset(29, 76), UiKit.Colors.ink)
+	pathBanner = UiKit.label(banner, "游\n侠", UDim2.fromScale(1, 1), UDim2.fromScale(0, 0), {
+		textSize = 20,
+		color = UiKit.Colors.panel,
+		title = true,
+		xalign = Enum.TextXAlignment.Center,
+	})
+
+	-- Name, identity line, and the brush bars.
+	local vitals = Instance.new("Frame")
+	vitals.Size = UDim2.fromOffset(320, 152)
+	vitals.Position = UDim2.fromOffset(84, 12)
+	vitals.BackgroundTransparency = 1
+	vitals.Parent = screen
+
+	nameLabel = UiKit.label(vitals, player.DisplayName, UDim2.new(1, 0, 0, 22), UDim2.fromOffset(0, 0), {
+		textSize = 19,
+		title = true,
+		bold = true,
+	})
+	nameLabel.TextStrokeColor3 = UiKit.Colors.panel
+	nameLabel.TextStrokeTransparency = 0.5
+	identityLabel = UiKit.label(vitals, "", UDim2.new(1, 0, 0, 16), UDim2.fromOffset(0, 22), {
 		textSize = 12,
-		color = UiKit.Colors.textDim,
 	})
+	identityLabel.TextStrokeColor3 = UiKit.Colors.panel
+	identityLabel.TextStrokeTransparency = 0.4
+
+	UiKit.label(vitals, "QI", UDim2.fromOffset(80, 12), UDim2.fromOffset(0, 44), { textSize = 10, bold = true })
+	qiBar = UiKit.bar(vitals, UDim2.fromOffset(190, 13), UDim2.fromOffset(0, 57), UiKit.Colors.qi)
+	qiValue = UiKit.label(vitals, "", UDim2.fromOffset(120, 13), UDim2.fromOffset(198, 57), { textSize = 11 })
+	qiValue.TextStrokeColor3 = UiKit.Colors.panel
+	qiValue.TextStrokeTransparency = 0.4
+
+	UiKit.label(vitals, "CULTIVATION", UDim2.fromOffset(110, 12), UDim2.fromOffset(0, 74), { textSize = 10, bold = true })
+	xpBar = UiKit.bar(vitals, UDim2.fromOffset(190, 13), UDim2.fromOffset(0, 87), UiKit.Colors.xp)
+	xpValue = UiKit.label(vitals, "", UDim2.fromOffset(120, 13), UDim2.fromOffset(198, 87), { textSize = 11 })
+	xpValue.TextStrokeColor3 = UiKit.Colors.panel
+	xpValue.TextStrokeTransparency = 0.4
+
+	UiKit.label(vitals, "STAMINA", UDim2.fromOffset(110, 12), UDim2.fromOffset(0, 104), { textSize = 10, bold = true })
+	local staminaBar = UiKit.bar(vitals, UDim2.fromOffset(190, 10), UDim2.fromOffset(0, 117), UiKit.Colors.health)
+	ClientState.StaminaChanged:Connect(function(current: number, max: number)
+		staminaBar.set(math.clamp(current / math.max(max, 1), 0, 1), "")
+	end)
+
+	stonesLabel = UiKit.label(vitals, "", UDim2.new(1, 0, 0, 14), UDim2.fromOffset(0, 132), { textSize = 11 })
+	stonesLabel.TextStrokeColor3 = UiKit.Colors.panel
+	stonesLabel.TextStrokeTransparency = 0.4
+
+	-- ----------------------- Top-left icon menu ------------------------
+	local menuEntries = {
+		{ glyph = "新", caption = "Updates", panel = "updates" },
+		{ glyph = "技", caption = "Arts", panel = "techniques" },
+		{ glyph = "命", caption = "Destiny", panel = "destiny" },
+		{ glyph = "囊", caption = "Bag", panel = "inventory" },
+		{ glyph = "宗", caption = "Sect", panel = "sect" },
+		{ glyph = "阁", caption = "Menu", panel = "menu" },
+	}
+	for index, entry in menuEntries do
+		UiKit.iconButton(screen, entry.glyph, entry.caption, UDim2.fromOffset(16 + (index - 1) * 50, 180), function()
+			Panels.toggle(entry.panel)
+		end)
+	end
 
 	-- Meditation indicator.
 	meditateLabel = UiKit.label(screen, "~ Meditating: qi gathers, the dao whispers ~", UDim2.new(0, 420, 0, 24), UDim2.new(0.5, -210, 0, 60), {
 		textSize = 16,
-		color = UiKit.Colors.qi,
 		title = true,
 		xalign = Enum.TextXAlignment.Center,
 	})
@@ -6026,23 +7265,29 @@ function HudController.Init()
 	meditateLabel.TextStrokeTransparency = 0.3
 	meditateLabel.Visible = false
 
-	-- Hotbar.
-	local slotSize = 86
+	-- ------------------------------ Hotbar -----------------------------
+	local slotSize = 84
 	local hotbar = Instance.new("Frame")
 	hotbar.Size = UDim2.fromOffset(Config.SLOT_COUNT * (slotSize + 6), slotSize)
 	hotbar.Position = UDim2.new(0.5, -(Config.SLOT_COUNT * (slotSize + 6)) / 2, 1, -slotSize - 14)
 	hotbar.BackgroundTransparency = 1
 	hotbar.Parent = screen
 	for slot = 1, Config.SLOT_COUNT do
-		local root = UiKit.frame(hotbar, UDim2.fromOffset(slotSize, slotSize), UDim2.fromOffset((slot - 1) * (slotSize + 6), 0))
-		root.BackgroundTransparency = 0.6
-		local key = UiKit.label(root, tostring(slot), UDim2.fromOffset(18, 16), UDim2.fromOffset(5, 2), {
+		-- Ink-filled slots with paper text, per the kit's quickbar.
+		local root = UiKit.frame(hotbar, UDim2.fromOffset(slotSize, slotSize), UDim2.fromOffset((slot - 1) * (slotSize + 6), 0), UiKit.Colors.ink)
+		root.BackgroundTransparency = 0.12
+		local slotStroke = Instance.new("UIStroke")
+		slotStroke.Color = UiKit.Colors.ink
+		slotStroke.Thickness = 1.6
+		slotStroke.Parent = root
+		local key = UiKit.label(root, tostring(slot), UDim2.fromOffset(18, 16), UDim2.fromOffset(6, 3), {
 			textSize = 13,
-			color = UiKit.Colors.gold,
+			color = UiKit.Colors.panel,
 			bold = true,
 		})
-		local name = UiKit.label(root, "", UDim2.new(1, -8, 0, 40), UDim2.fromOffset(4, 22), {
+		local name = UiKit.label(root, "", UDim2.new(1, -8, 0, 44), UDim2.fromOffset(4, 22), {
 			textSize = 12,
+			color = UiKit.Colors.panel,
 			xalign = Enum.TextXAlignment.Center,
 			wrap = true,
 		})
@@ -6050,8 +7295,8 @@ function HudController.Init()
 		cooldown.AnchorPoint = Vector2.new(0, 1)
 		cooldown.Position = UDim2.fromScale(0, 1)
 		cooldown.Size = UDim2.fromScale(1, 0)
-		cooldown.BackgroundColor3 = Color3.new(0, 0, 0)
-		cooldown.BackgroundTransparency = 0.45
+		cooldown.BackgroundColor3 = UiKit.Colors.panel
+		cooldown.BackgroundTransparency = 0.65
 		cooldown.BorderSizePixel = 0
 		cooldown.Visible = false
 		cooldown.ZIndex = 5
@@ -6060,26 +7305,28 @@ function HudController.Init()
 	end
 
 	-- Hints footer.
-	hintsLabel = UiKit.label(screen, "T Techniques   R Destiny   I Inventory   G Meditate   M Menu", UDim2.new(0, 600, 0, 18), UDim2.new(0.5, -300, 1, -120), {
+	hintsLabel = UiKit.label(screen, "1-6 Cast   Shift Sprint   Q Dash   O Qi Step   T Arts   R Destiny   I Bag   N Sect   G Meditate   M Menu", UDim2.new(0, 800, 0, 18), UDim2.new(0.5, -400, 1, -118), {
 		textSize = 13,
-		color = UiKit.Colors.textDim,
 		xalign = Enum.TextXAlignment.Center,
 	})
+	hintsLabel.TextStrokeColor3 = UiKit.Colors.panel
+	hintsLabel.TextStrokeTransparency = 0.4
 
 	-- Toasts.
 	toastArea = Instance.new("Frame")
-	toastArea.Size = UDim2.new(0, 520, 0, 200)
-	toastArea.Position = UDim2.new(0.5, -260, 0, 96)
+	toastArea.Size = UDim2.new(0, 460, 0, 220)
+	toastArea.Position = UDim2.new(0.5, -230, 0, 96)
 	toastArea.BackgroundTransparency = 1
 	toastArea.Parent = screen
 	local toastLayout = Instance.new("UIListLayout")
 	toastLayout.SortOrder = Enum.SortOrder.LayoutOrder
-	toastLayout.Padding = UDim.new(0, 2)
+	toastLayout.Padding = UDim.new(0, 4)
 	toastLayout.Parent = toastArea
 
 	-- Wiring.
 	ClientState.StatsChanged:Connect(renderStats)
 	ClientState.TechniquesChanged:Connect(renderSlots)
+	ClientState.SocialChanged:Connect(renderStats)
 	ClientState.CooldownStarted:Connect(startCooldownSweep)
 	Net.remoteEvent("Notify").OnClientEvent:Connect(function(payload)
 		if typeof(payload) == "table" and typeof(payload.text) == "string" then
@@ -6099,7 +7346,7 @@ return HudController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="46">
+          <Item class="ModuleScript" referent="48">
             <Properties>
               <string name="Name">InventoryController</string>
               <string name="Source"><![CDATA[--!strict
@@ -6119,6 +7366,7 @@ local Realms = require(Shared:WaitForChild("Data"):WaitForChild("Realms"))
 
 local UiKit = require(script.Parent.Parent.Modules.UiKit)
 local ClientState = require(script.Parent.Parent.Modules.ClientState)
+local Panels = require(script.Parent.Parent.Modules.Panels)
 
 local InventoryController = {}
 
@@ -6225,6 +7473,7 @@ end
 
 function InventoryController.Init()
 	window = UiKit.window("Inventory", "Inventory", UDim2.fromOffset(560, 480), 40)
+	Panels.register("inventory", window.toggle)
 	local body = window.body
 
 	UiKit.label(body, "ORE POUCH", UDim2.fromOffset(200, 16), UDim2.fromOffset(0, 0), { textSize = 12, color = UiKit.Colors.gold, bold = true })
@@ -6250,7 +7499,7 @@ return InventoryController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="47">
+          <Item class="ModuleScript" referent="49">
             <Properties>
               <string name="Name">MeditateController</string>
               <string name="Source"><![CDATA[--!strict
@@ -6324,7 +7573,7 @@ return MeditateController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="48">
+          <Item class="ModuleScript" referent="50">
             <Properties>
               <string name="Name">MenuController</string>
               <string name="Source"><![CDATA[--!strict
@@ -6342,6 +7591,7 @@ local Config = require(Shared:WaitForChild("Config"))
 
 local UiKit = require(script.Parent.Parent.Modules.UiKit)
 local ClientSettings = require(script.Parent.Parent.Modules.ClientSettings)
+local Panels = require(script.Parent.Parent.Modules.Panels)
 
 local MenuController = {}
 
@@ -6369,6 +7619,9 @@ end
 function MenuController.Init()
 	screen = UiKit.screen("MainMenu", 100)
 	screen.Enabled = true
+	Panels.register("menu", function()
+		setOpen(not screen.Enabled)
+	end)
 
 	blur = Instance.new("BlurEffect")
 	blur.Size = 18
@@ -6479,7 +7732,459 @@ return MenuController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="49">
+          <Item class="ModuleScript" referent="51">
+            <Properties>
+              <string name="Name">MovementController</string>
+              <string name="Source"><![CDATA[--!strict
+-- ModuleScript: StarterPlayer > StarterPlayerScripts > Client > Controllers > MovementController
+-- Body movement that belongs to the client (it owns its character's
+-- physics): hold Shift to sprint on a stamina pool, press Q for a short
+-- dash on a 2-second cooldown. Stamina is sprint/dash fuel only; qi and
+-- combat stay fully server-side.
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Net = require(Shared:WaitForChild("Net"))
+
+local ClientState = require(script.Parent.Parent.Modules.ClientState)
+local ClientSettings = require(script.Parent.Parent.Modules.ClientSettings)
+
+local MovementController = {}
+
+local MAX_STAMINA = 100
+local SPRINT_DRAIN = 18 -- per second
+local STAMINA_REGEN = 14 -- per second, when not sprinting
+local SPRINT_MULT = 1.6
+local DASH_COST = 25
+local DASH_COOLDOWN = 2
+local DASH_SPEED = 70
+
+local player = Players.LocalPlayer
+
+local stamina = MAX_STAMINA
+local sprinting = false
+local dashReadyAt = 0
+
+local function character(): (Humanoid?, BasePart?)
+	local model = player.Character
+	if model == nil then
+		return nil, nil
+	end
+	local humanoid = model:FindFirstChildOfClass("Humanoid")
+	local root = model:FindFirstChild("HumanoidRootPart")
+	return humanoid, if root and root:IsA("BasePart") then root else nil
+end
+
+-- ------------------------ Qi Step foot glow ------------------------
+-- QiStepping is a replicated humanoid attribute set by the server, so every
+-- client can dress every stepping cultivator's feet in light.
+
+local footGlows: { [Humanoid]: BasePart } = {}
+
+local function setFootGlow(humanoid: Humanoid, active: boolean)
+	local existing = footGlows[humanoid]
+	if not active then
+		if existing then
+			footGlows[humanoid] = nil
+			existing:Destroy()
+		end
+		return
+	end
+	if existing and existing.Parent then
+		return
+	end
+	local model = humanoid.Parent
+	local root = if model then model:FindFirstChild("HumanoidRootPart") else nil
+	if root == nil or not root:IsA("BasePart") then
+		return
+	end
+	local glow = Instance.new("Part")
+	glow.Name = "QiStepGlow"
+	glow.Shape = Enum.PartType.Cylinder
+	glow.Size = Vector3.new(0.3, 5.6, 5.6)
+	glow.Color = Color3.fromRGB(120, 210, 255)
+	glow.Material = Enum.Material.Neon
+	glow.Transparency = 0.45
+	glow.CanCollide = false
+	glow.CanQuery = false
+	glow.Massless = true
+	glow.CFrame = root.CFrame * CFrame.new(0, -2.9, 0) * CFrame.Angles(0, 0, math.rad(90))
+	glow.Parent = root
+	local weld = Instance.new("WeldConstraint")
+	weld.Part0 = root
+	weld.Part1 = glow
+	weld.Parent = glow
+	footGlows[humanoid] = glow
+end
+
+local function watchCharacter(model: Model, isOwn: boolean)
+	local humanoid = model:FindFirstChildOfClass("Humanoid") or model:WaitForChild("Humanoid", 10)
+	if humanoid == nil or not humanoid:IsA("Humanoid") then
+		return
+	end
+	local function refresh()
+		local active = humanoid:GetAttribute("QiStepping") == true
+		if not isOwn and not ClientSettings.get("othersVfx") then
+			active = false
+		end
+		setFootGlow(humanoid, active)
+	end
+	humanoid:GetAttributeChangedSignal("QiStepping"):Connect(refresh)
+	refresh()
+end
+
+local function watchPlayer(otherPlayer: Player)
+	local isOwn = otherPlayer == player
+	if otherPlayer.Character then
+		task.spawn(watchCharacter, otherPlayer.Character, isOwn)
+	end
+	otherPlayer.CharacterAdded:Connect(function(model)
+		task.spawn(watchCharacter, model, isOwn)
+	end)
+end
+
+local function dash()
+	local now = os.clock()
+	if now < dashReadyAt or stamina < DASH_COST then
+		return
+	end
+	local humanoid, root = character()
+	if humanoid == nil or root == nil or humanoid.Health <= 0 then
+		return
+	end
+	dashReadyAt = now + DASH_COOLDOWN
+	stamina -= DASH_COST
+	local direction = humanoid.MoveDirection
+	if direction.Magnitude < 0.1 then
+		direction = root.CFrame.LookVector
+	end
+	root.AssemblyLinearVelocity = direction.Unit * DASH_SPEED + Vector3.new(0, 8, 0)
+end
+
+function MovementController.Init()
+	UserInputService.InputBegan:Connect(function(input, gameProcessed)
+		if input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.RightShift then
+			sprinting = true -- sprint may start even when typing ends elsewhere
+		end
+		if gameProcessed then
+			return
+		end
+		if input.KeyCode == Enum.KeyCode.Q then
+			dash()
+		elseif input.KeyCode == Enum.KeyCode.O then
+			-- Toggle Qi Step; the server is the authority on whether qi
+			-- suffices and on the drain.
+			local humanoid = (character())
+			local active = if humanoid then humanoid:GetAttribute("QiStepping") == true else false
+			Net.remoteEvent("QiStepSet"):FireServer(not active)
+		end
+	end)
+	UserInputService.InputEnded:Connect(function(input)
+		if input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.RightShift then
+			sprinting = false
+		end
+	end)
+
+	RunService.Heartbeat:Connect(function(deltaTime)
+		local humanoid = (character())
+		if humanoid == nil then
+			return
+		end
+		-- The server owns base walkspeed (path/race/talents/buffs) and
+		-- publishes it as an attribute; sprint multiplies it locally.
+		local baseSpeed = humanoid:GetAttribute("BaseWalkSpeed")
+		local base = if typeof(baseSpeed) == "number" then baseSpeed else 16
+		local flatAttr = humanoid:GetAttribute("SpeedFlat")
+		local flat = if typeof(flatAttr) == "number" then flatAttr else 0
+		local factorAttr = humanoid:GetAttribute("SpeedFactor")
+		local factor = if typeof(factorAttr) == "number" then factorAttr else 1
+		local qiStepAttr = humanoid:GetAttribute("QiStepBonus")
+		local qiStep = if typeof(qiStepAttr) == "number" then qiStepAttr else 0
+
+		local moving = humanoid.MoveDirection.Magnitude > 0.05
+		local sprintingNow = sprinting and moving and stamina > 0
+		if sprintingNow then
+			stamina = math.max(0, stamina - SPRINT_DRAIN * deltaTime)
+		else
+			stamina = math.min(MAX_STAMINA, stamina + STAMINA_REGEN * deltaTime)
+		end
+		humanoid.WalkSpeed = (base + flat + qiStep) * factor * (if sprintingNow then SPRINT_MULT else 1)
+		ClientState.FireStamina(stamina, MAX_STAMINA)
+	end)
+
+	-- Foot glow for everyone who qi-steps, ourselves included.
+	for _, otherPlayer in Players:GetPlayers() do
+		watchPlayer(otherPlayer)
+	end
+	Players.PlayerAdded:Connect(watchPlayer)
+end
+
+return MovementController
+]]></string>
+            </Properties>
+          </Item>
+          <Item class="ModuleScript" referent="52">
+            <Properties>
+              <string name="Name">SectController</string>
+              <string name="Source"><![CDATA[--!strict
+-- ModuleScript: StarterPlayer > StarterPlayerScripts > Client > Controllers > SectController
+-- The Sect & Lineage panel (key N): found or join a sect, manage ranks
+-- (Sect Leader / Vice Sect Leader / Elder / Inner Disciple / Outer
+-- Disciple), take disciples, and watch your dao fortune grow as they break
+-- through. Discipleship offers pop a banner even when the panel is closed.
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
+
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Net = require(Shared:WaitForChild("Net"))
+local Config = require(Shared:WaitForChild("Config"))
+
+local UiKit = require(script.Parent.Parent.Modules.UiKit)
+local ClientState = require(script.Parent.Parent.Modules.ClientState)
+local Panels = require(script.Parent.Parent.Modules.Panels)
+
+local SectController = {}
+
+local window: UiKit.Window
+local sectArea: Frame
+local lineageArea: Frame
+local offerGui: ScreenGui
+
+local RANK_STEPS = { "outer", "inner", "elder", "vice" } -- leader via Crown
+
+local function clear(area: Frame)
+	for _, child in area:GetChildren() do
+		if child:IsA("GuiObject") then
+			child:Destroy()
+		end
+	end
+end
+
+local function invoke(remoteName: string, payload: any)
+	task.spawn(function()
+		local result = Net.remoteFunction(remoteName):InvokeServer(payload)
+		-- Refusals surface inline; successes push fresh state on their own.
+		if typeof(result) == "table" and result.ok ~= true and typeof(result.error) == "string" then
+			local social = ClientState.social
+			local _ = social
+			-- Show the reason where the player is looking.
+			local note = window.root:FindFirstChild("SectError")
+			if note and note:IsA("TextLabel") then
+				note.Text = result.error
+			end
+		end
+	end)
+end
+
+local function stepOf(rank: string): number
+	for index, step in RANK_STEPS do
+		if step == rank then
+			return index
+		end
+	end
+	return if rank == "leader" then #RANK_STEPS + 1 else 0
+end
+
+local function renderSect()
+	clear(sectArea)
+	local social = ClientState.social
+	local sect = if social then social.sect else nil
+
+	if sect == nil then
+		UiKit.label(sectArea, "You belong to no sect.", UDim2.new(1, 0, 0, 18), UDim2.fromOffset(0, 0), { textSize = 13, bold = true })
+
+		UiKit.label(sectArea, `FOUND A SECT ({Config.SECT_CREATE_COST} spirit stones)`, UDim2.new(1, 0, 0, 14), UDim2.fromOffset(0, 30), { textSize = 11, bold = true })
+		local nameBox = UiKit.textBox(sectArea, "Sect name...", UDim2.new(1, -100, 0, 30), UDim2.fromOffset(0, 48))
+		UiKit.button(sectArea, "Found", UDim2.fromOffset(92, 30), UDim2.new(1, -92, 0, 48), function()
+			invoke("CreateSect", { name = nameBox.Text })
+		end, { color = UiKit.Colors.ink, textColor = UiKit.Colors.panel })
+
+		UiKit.label(sectArea, "OR JOIN ONE BY NAME", UDim2.new(1, 0, 0, 14), UDim2.fromOffset(0, 92), { textSize = 11, bold = true })
+		local joinBox = UiKit.textBox(sectArea, "Exact sect name...", UDim2.new(1, -100, 0, 30), UDim2.fromOffset(0, 110))
+		UiKit.button(sectArea, "Join", UDim2.fromOffset(92, 30), UDim2.new(1, -92, 0, 110), function()
+			invoke("JoinSect", { name = joinBox.Text })
+		end)
+		return
+	end
+
+	UiKit.label(sectArea, sect.name, UDim2.new(1, 0, 0, 24), UDim2.fromOffset(0, 0), { textSize = 19, title = true, bold = true })
+	UiKit.label(sectArea, `Your station: {sect.myRankName}`, UDim2.new(1, 0, 0, 16), UDim2.fromOffset(0, 24), { textSize = 12, color = UiKit.Colors.textDim })
+
+	local list = (UiKit.scroll(sectArea, UDim2.new(1, 0, 1, -86), UDim2.fromOffset(0, 44)))
+	local myPower = stepOf(sect.myRank)
+	local canManage = sect.myRank == "leader" or sect.myRank == "vice"
+	for index, member in sect.members do
+		local row = UiKit.frame(list, UDim2.new(1, -8, 0, 40), UDim2.fromOffset(0, 0), UiKit.Colors.panelLight)
+		row.LayoutOrder = index
+		local onlineMark = if member.online then "●  " else "○  "
+		UiKit.label(row, onlineMark .. member.name, UDim2.new(0.5, -6, 0, 18), UDim2.fromOffset(6, 2), { textSize = 12, bold = true })
+		UiKit.label(row, member.rankName, UDim2.new(0.5, -6, 0, 14), UDim2.fromOffset(6, 21), { textSize = 10, color = UiKit.Colors.textDim })
+
+		local targetPower = stepOf(member.rank)
+		if canManage and targetPower < myPower and member.rank ~= "leader" then
+			local x = -28
+			UiKit.button(row, "X", UDim2.fromOffset(24, 22), UDim2.new(1, x, 0.5, -11), function()
+				invoke("SetSectRank", { targetUserId = member.userId, rank = "kick" })
+			end, { textSize = 11, color = UiKit.Colors.danger, textColor = UiKit.Colors.panel })
+			x -= 28
+			if targetPower > 1 then
+				UiKit.button(row, "▼", UDim2.fromOffset(24, 22), UDim2.new(1, x, 0.5, -11), function()
+					invoke("SetSectRank", { targetUserId = member.userId, rank = RANK_STEPS[targetPower - 1] })
+				end, { textSize = 11 })
+				x -= 28
+			end
+			if targetPower < #RANK_STEPS and targetPower + 1 < myPower then
+				UiKit.button(row, "▲", UDim2.fromOffset(24, 22), UDim2.new(1, x, 0.5, -11), function()
+					invoke("SetSectRank", { targetUserId = member.userId, rank = RANK_STEPS[targetPower + 1] })
+				end, { textSize = 11 })
+				x -= 28
+			end
+			if sect.myRank == "leader" then
+				UiKit.button(row, "Crown", UDim2.fromOffset(46, 22), UDim2.new(1, x - 20, 0.5, -11), function()
+					invoke("SetSectRank", { targetUserId = member.userId, rank = "leader" })
+				end, { textSize = 10, color = UiKit.Colors.ink, textColor = UiKit.Colors.panel })
+			end
+		end
+	end
+
+	UiKit.button(sectArea, "Leave Sect", UDim2.new(0.5, -4, 0, 30), UDim2.new(0, 0, 1, -34), function()
+		invoke("LeaveSect", {})
+	end)
+	if sect.myRank == "leader" then
+		UiKit.button(sectArea, "Disband", UDim2.new(0.5, -4, 0, 30), UDim2.new(0.5, 4, 1, -34), function()
+			invoke("DisbandSect", {})
+		end, { color = UiKit.Colors.danger, textColor = UiKit.Colors.panel })
+	end
+end
+
+local function renderLineage()
+	clear(lineageArea)
+	local social = ClientState.social
+
+	local masterName = if social then social.masterName else nil
+	UiKit.label(lineageArea, "MASTER", UDim2.new(1, 0, 0, 14), UDim2.fromOffset(0, 0), { textSize = 11, bold = true })
+	if masterName then
+		UiKit.label(lineageArea, masterName, UDim2.new(1, -100, 0, 20), UDim2.fromOffset(0, 16), { textSize = 14, bold = true })
+		UiKit.button(lineageArea, "Renounce", UDim2.fromOffset(92, 24), UDim2.new(1, -92, 0, 14), function()
+			invoke("RenounceMaster", {})
+		end, { textSize = 11 })
+	else
+		UiKit.label(lineageArea, "You follow no master.", UDim2.new(1, 0, 0, 20), UDim2.fromOffset(0, 16), { textSize = 12, color = UiKit.Colors.textDim })
+	end
+
+	local cap = if social then social.discipleCap else Config.MAX_DISCIPLES
+	local disciples: { { userId: number, name: string, online: boolean } } = if social then social.disciples else {}
+	UiKit.label(lineageArea, `DISCIPLES ({#disciples}/{cap})`, UDim2.new(1, 0, 0, 14), UDim2.fromOffset(0, 48), { textSize = 11, bold = true })
+	for index, disciple in disciples do
+		local mark = if disciple.online then "●  " else "○  "
+		UiKit.label(lineageArea, mark .. disciple.name, UDim2.new(1, 0, 0, 18), UDim2.fromOffset(0, 48 + index * 18), { textSize = 12 })
+	end
+
+	local offerY = 76 + #disciples * 18
+	local offerBox = UiKit.textBox(lineageArea, "Player name...", UDim2.new(1, -100, 0, 28), UDim2.fromOffset(0, offerY))
+	UiKit.button(lineageArea, "Offer", UDim2.fromOffset(92, 28), UDim2.new(1, -92, 0, offerY), function()
+		invoke("OfferDiscipleship", { targetName = offerBox.Text })
+	end, { color = UiKit.Colors.ink, textColor = UiKit.Colors.panel })
+	UiKit.label(lineageArea, "A disciple may receive your mastered techniques. Each of their breakthroughs deepens your qi gain.", UDim2.new(1, 0, 0, 40), UDim2.fromOffset(0, offerY + 32), {
+		textSize = 11,
+		color = UiKit.Colors.textDim,
+		wrap = true,
+	})
+
+	local bonus = if social then social.masterBonus else 0
+	UiKit.label(lineageArea, `Dao Fortune: +{bonus}x qi gain`, UDim2.new(1, 0, 0, 18), UDim2.new(0, 0, 1, -22), { textSize = 13, bold = true })
+end
+
+local function showOffer(payload: unknown)
+	if typeof(payload) ~= "table" then
+		return
+	end
+	local offer = payload :: { [string]: any }
+	for _, child in offerGui:GetChildren() do
+		child:Destroy()
+	end
+	local banner = UiKit.frame(offerGui, UDim2.fromOffset(420, 76), UDim2.new(0.5, -210, 0, 130))
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = UiKit.Colors.ink
+	stroke.Thickness = 2
+	stroke.Parent = banner
+	UiKit.label(banner, `{tostring(offer.masterName)} offers to take you as a disciple.`, UDim2.new(1, -16, 0, 30), UDim2.fromOffset(8, 6), {
+		textSize = 13,
+		bold = true,
+		xalign = Enum.TextXAlignment.Center,
+		wrap = true,
+	})
+	UiKit.button(banner, "Kneel (Accept)", UDim2.new(0.5, -12, 0, 28), UDim2.fromOffset(8, 40), function()
+		invoke("RespondDiscipleship", { accept = true })
+		banner:Destroy()
+	end, { color = UiKit.Colors.ink, textColor = UiKit.Colors.panel, textSize = 12 })
+	UiKit.button(banner, "Decline", UDim2.new(0.5, -12, 0, 28), UDim2.new(0.5, 4, 0, 40), function()
+		invoke("RespondDiscipleship", { accept = false })
+		banner:Destroy()
+	end, { textSize = 12 })
+	task.delay(85, function()
+		if banner.Parent then
+			banner:Destroy()
+		end
+	end)
+end
+
+function SectController.Init()
+	window = UiKit.window("Sect", "Sect & Lineage", UDim2.fromOffset(680, 520), 40)
+	Panels.register("sect", window.toggle)
+	local body = window.body
+
+	UiKit.label(body, "THE SECT", UDim2.fromOffset(200, 16), UDim2.fromOffset(0, 0), { textSize = 12, bold = true })
+	sectArea = Instance.new("Frame")
+	sectArea.Size = UDim2.new(0.55, -8, 1, -40)
+	sectArea.Position = UDim2.fromOffset(0, 20)
+	sectArea.BackgroundTransparency = 1
+	sectArea.Parent = body
+
+	UiKit.label(body, "MASTER & DISCIPLES", UDim2.fromOffset(240, 16), UDim2.new(0.55, 8, 0, 0), { textSize = 12, bold = true })
+	lineageArea = Instance.new("Frame")
+	lineageArea.Size = UDim2.new(0.45, -8, 1, -40)
+	lineageArea.Position = UDim2.new(0.55, 8, 0, 20)
+	lineageArea.BackgroundTransparency = 1
+	lineageArea.Parent = body
+
+	local errorNote = UiKit.label(window.root, "", UDim2.new(1, -20, 0, 16), UDim2.new(0, 10, 1, -20), {
+		textSize = 11,
+		color = UiKit.Colors.danger,
+		xalign = Enum.TextXAlignment.Center,
+	})
+	errorNote.Name = "SectError"
+
+	offerGui = UiKit.screen("DiscipleOffers", 90)
+
+	renderSect()
+	renderLineage()
+	ClientState.SocialChanged:Connect(function()
+		renderSect()
+		renderLineage()
+	end)
+	Net.remoteEvent("DiscipleOffer").OnClientEvent:Connect(showOffer)
+
+	UserInputService.InputBegan:Connect(function(input, gameProcessed)
+		if gameProcessed then
+			return
+		end
+		if input.KeyCode == Enum.KeyCode.N then
+			window.toggle()
+		end
+	end)
+end
+
+return SectController
+]]></string>
+            </Properties>
+          </Item>
+          <Item class="ModuleScript" referent="53">
             <Properties>
               <string name="Name">TechniqueController</string>
               <string name="Source"><![CDATA[--!strict
@@ -6732,7 +8437,7 @@ return TechniqueController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="50">
+          <Item class="ModuleScript" referent="54">
             <Properties>
               <string name="Name">TechniqueForgeController</string>
               <string name="Source"><![CDATA[--!strict
@@ -6756,6 +8461,7 @@ local Realms = require(Shared:WaitForChild("Data"):WaitForChild("Realms"))
 
 local UiKit = require(script.Parent.Parent.Modules.UiKit)
 local ClientState = require(script.Parent.Parent.Modules.ClientState)
+local Panels = require(script.Parent.Parent.Modules.Panels)
 
 local TechniqueForgeController = {}
 
@@ -6864,6 +8570,56 @@ local function renderElements()
 	end
 end
 
+-- Small picker over the window: choose which online disciple inherits.
+local function openTeachPicker(techniqueId: string, techniqueName: string)
+	local existing = window.root:FindFirstChild("TeachPicker")
+	if existing then
+		existing:Destroy()
+	end
+	local social = ClientState.social
+	local online: { { userId: number, name: string } } = {}
+	if social then
+		for _, disciple in social.disciples do
+			if disciple.online then
+				table.insert(online, { userId = disciple.userId, name = disciple.name })
+			end
+		end
+	end
+
+	local picker = UiKit.frame(window.root, UDim2.fromOffset(280, 90 + math.max(1, #online) * 34), UDim2.new(0.5, -140, 0.5, -100), UiKit.Colors.panel)
+	picker.Name = "TeachPicker"
+	picker.ZIndex = 10
+	local pickerStroke = Instance.new("UIStroke")
+	pickerStroke.Color = UiKit.Colors.ink
+	pickerStroke.Thickness = 2
+	pickerStroke.Parent = picker
+	UiKit.label(picker, `Pass down {techniqueName} to:`, UDim2.new(1, -16, 0, 22), UDim2.fromOffset(8, 6), {
+		textSize = 13,
+		bold = true,
+		wrap = true,
+	}).ZIndex = 11
+	if #online == 0 then
+		UiKit.label(picker, "None of your disciples are here right now.", UDim2.new(1, -16, 0, 28), UDim2.fromOffset(8, 32), {
+			textSize = 12,
+			color = UiKit.Colors.textDim,
+			wrap = true,
+		}).ZIndex = 11
+	end
+	for index, disciple in online do
+		local button = UiKit.button(picker, disciple.name, UDim2.new(1, -16, 0, 28), UDim2.fromOffset(8, 32 + (index - 1) * 34), function()
+			task.spawn(function()
+				Net.remoteFunction("TeachTechnique"):InvokeServer({ id = techniqueId, targetUserId = disciple.userId })
+			end)
+			picker:Destroy()
+		end, { textSize = 13 })
+		button.ZIndex = 11
+	end
+	local closeButton = UiKit.button(picker, "Close", UDim2.new(1, -16, 0, 24), UDim2.new(0, 8, 1, -30), function()
+		picker:Destroy()
+	end, { textSize = 12, color = UiKit.Colors.ink, textColor = UiKit.Colors.panel })
+	closeButton.ZIndex = 11
+end
+
 local function renderMine()
 	clearList(myList)
 	local techniques = ClientState.techniques
@@ -6877,7 +8633,7 @@ local function renderMine()
 	end
 	for index, technique in techniques.techniques do
 		local element = Elements.get(technique.element)
-		local row = UiKit.frame(myList, UDim2.new(1, -8, 0, 54), UDim2.fromOffset(0, 0), UiKit.Colors.panelLight)
+		local row = UiKit.frame(myList, UDim2.new(1, -8, 0, 72), UDim2.fromOffset(0, 0), UiKit.Colors.panelLight)
 		row.LayoutOrder = index
 		local slotText = if slotOf[technique.id] then ` [{slotOf[technique.id]}]` else ""
 		UiKit.label(row, technique.name .. slotText, UDim2.new(1, -34, 0, 18), UDim2.fromOffset(6, 3), {
@@ -6886,16 +8642,34 @@ local function renderMine()
 			bold = true,
 		})
 		local form = Forms.get(technique.form)
-		UiKit.label(row, `{if form then form.name else technique.form} · {if element then element.name else "?"} · power {technique.power}`, UDim2.new(1, -34, 0, 14), UDim2.fromOffset(6, 20), {
+		local originText = if technique.origin then ` · inherited from {technique.origin}` else ""
+		UiKit.label(row, `{if form then form.name else technique.form} · {if element then element.name else "?"} · power {technique.power}{originText}`, UDim2.new(1, -34, 0, 14), UDim2.fromOffset(6, 20), {
 			textSize = 11,
 			color = UiKit.Colors.textDim,
 		})
+
+		local level, into, needed = TechniqueMath.masteryProgress(technique.masteryXp or 0)
+		local mastered = level >= TechniqueMath.MASTERY_MAX
+		local masteryText = if mastered
+			then "MASTERED · may be passed to a disciple"
+			else `Mastery {level}/{TechniqueMath.MASTERY_MAX} · {into}/{needed} to next`
+		UiKit.label(row, masteryText, UDim2.new(1, -34, 0, 13), UDim2.fromOffset(6, 35), {
+			textSize = 10,
+			color = if mastered then UiKit.Colors.danger else UiKit.Colors.textDim,
+			bold = mastered,
+		})
+
 		for slot = 1, Config.SLOT_COUNT do
-			UiKit.button(row, tostring(slot), UDim2.fromOffset(20, 16), UDim2.fromOffset(6 + (slot - 1) * 23, 35), function()
+			UiKit.button(row, tostring(slot), UDim2.fromOffset(20, 16), UDim2.fromOffset(6 + (slot - 1) * 23, 51), function()
 				task.spawn(function()
 					Net.remoteFunction("EquipTechnique"):InvokeServer({ slot = slot, id = technique.id })
 				end)
 			end, { textSize = 11 })
+		end
+		if mastered then
+			UiKit.button(row, "Teach", UDim2.fromOffset(48, 20), UDim2.new(1, -86, 0, 48), function()
+				openTeachPicker(technique.id, technique.name)
+			end, { textSize = 11, color = UiKit.Colors.ink, textColor = UiKit.Colors.panel })
 		end
 		UiKit.button(row, "X", UDim2.fromOffset(24, 24), UDim2.new(1, -30, 0, 4), function()
 			task.spawn(function()
@@ -6907,6 +8681,7 @@ end
 
 function TechniqueForgeController.Init()
 	window = UiKit.window("TechniqueForge", "Technique Forge", UDim2.fromOffset(760, 540), 40)
+	Panels.register("techniques", window.toggle)
 	local body = window.body
 
 	-- Column 1: category + forms
@@ -6997,12 +8772,63 @@ return TechniqueForgeController
 ]]></string>
             </Properties>
           </Item>
+          <Item class="ModuleScript" referent="55">
+            <Properties>
+              <string name="Name">UpdatesController</string>
+              <string name="Source"><![CDATA[--!strict
+-- ModuleScript: StarterPlayer > StarterPlayerScripts > Client > Controllers > UpdatesController
+-- The Updates panel: the in-game changelog from Data/Updates, opened from
+-- the top-left menu bar. Newest entries first.
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Updates = require(Shared:WaitForChild("Data"):WaitForChild("Updates"))
+
+local UiKit = require(script.Parent.Parent.Modules.UiKit)
+local Panels = require(script.Parent.Parent.Modules.Panels)
+
+local UpdatesController = {}
+
+function UpdatesController.Init()
+	local window = UiKit.window("Updates", "Updates", UDim2.fromOffset(520, 500), 60)
+	local list = (UiKit.scroll(window.body, UDim2.fromScale(1, 1), UDim2.fromOffset(0, 0)))
+
+	for index, entry in Updates do
+		local height = 64 + #entry.notes * 30
+		local card = UiKit.frame(list, UDim2.new(1, -8, 0, height), UDim2.fromOffset(0, 0), UiKit.Colors.panelLight)
+		card.LayoutOrder = index
+		UiKit.label(card, entry.title, UDim2.new(1, -120, 0, 24), UDim2.fromOffset(10, 8), {
+			textSize = 18,
+			title = true,
+			bold = true,
+		})
+		UiKit.label(card, `v{entry.version} · {entry.date}`, UDim2.fromOffset(110, 16), UDim2.new(1, -118, 0, 12), {
+			textSize = 11,
+			color = UiKit.Colors.textDim,
+			xalign = Enum.TextXAlignment.Right,
+		})
+		for noteIndex, note in entry.notes do
+			UiKit.label(card, "- " .. note, UDim2.new(1, -24, 0, 28), UDim2.fromOffset(12, 30 + (noteIndex - 1) * 30), {
+				textSize = 12,
+				wrap = true,
+			})
+		end
+	end
+
+	Panels.register("updates", window.toggle)
+end
+
+return UpdatesController
+]]></string>
+            </Properties>
+          </Item>
         </Item>
-        <Item class="Folder" referent="51">
+        <Item class="Folder" referent="56">
           <Properties>
             <string name="Name">Modules</string>
           </Properties>
-          <Item class="ModuleScript" referent="52">
+          <Item class="ModuleScript" referent="57">
             <Properties>
               <string name="Name">ClientSettings</string>
               <string name="Source"><![CDATA[--!strict
@@ -7040,7 +8866,7 @@ return ClientSettings
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="53">
+          <Item class="ModuleScript" referent="58">
             <Properties>
               <string name="Name">ClientState</string>
               <string name="Source"><![CDATA[--!strict
@@ -7066,6 +8892,7 @@ export type Stats = {
 	spiritStones: number,
 	meditating: boolean,
 	equippedTalents: { string },
+	masterBonus: number,
 }
 
 export type Inventory = {
@@ -7077,7 +8904,7 @@ export type Inventory = {
 }
 
 export type Techniques = {
-	techniques: { { id: string, name: string, form: string, element: string, power: number } },
+	techniques: { { id: string, name: string, form: string, element: string, power: number, masteryXp: number, origin: string? } },
 	slots: { [string]: string },
 }
 
@@ -7090,29 +8917,51 @@ export type Destiny = {
 	talentSpins: number,
 }
 
+export type SectMember = { userId: number, name: string, rank: string, rankName: string, power: number, online: boolean }
+
+export type Social = {
+	sect: { id: string, name: string, myRank: string, myRankName: string, members: { SectMember } }?,
+	masterName: string?,
+	disciples: { { userId: number, name: string, online: boolean } },
+	discipleCap: number,
+	masterBonus: number,
+}
+
 local ClientState = {
 	stats = nil :: Stats?,
 	inventory = nil :: Inventory?,
 	techniques = nil :: Techniques?,
 	destiny = nil :: Destiny?,
+	social = nil :: Social?,
 }
 
 local statsEvent = Instance.new("BindableEvent")
 local inventoryEvent = Instance.new("BindableEvent")
 local techniquesEvent = Instance.new("BindableEvent")
 local destinyEvent = Instance.new("BindableEvent")
+local socialEvent = Instance.new("BindableEvent")
 local cooldownEvent = Instance.new("BindableEvent")
+local staminaEvent = Instance.new("BindableEvent")
 
 ClientState.StatsChanged = statsEvent.Event
 ClientState.InventoryChanged = inventoryEvent.Event
 ClientState.TechniquesChanged = techniquesEvent.Event
 ClientState.DestinyChanged = destinyEvent.Event
+ClientState.SocialChanged = socialEvent.Event
 -- Fired by TechniqueController when a cast starts a local cooldown:
 -- (slot: number, duration: number)
 ClientState.CooldownStarted = cooldownEvent.Event
 
 function ClientState.FireCooldown(slot: number, duration: number)
 	cooldownEvent:Fire(slot, duration)
+end
+
+-- Stamina is simulated by MovementController (client-side sprint/dash fuel);
+-- the HUD listens here. (current: number, max: number)
+ClientState.StaminaChanged = staminaEvent.Event
+
+function ClientState.FireStamina(current: number, max: number)
+	staminaEvent:Fire(current, max)
 end
 
 Net.remoteEvent("StatsChanged").OnClientEvent:Connect(function(payload)
@@ -7135,11 +8984,44 @@ Net.remoteEvent("DestinyChanged").OnClientEvent:Connect(function(payload)
 	destinyEvent:Fire(payload)
 end)
 
+Net.remoteEvent("SocialChanged").OnClientEvent:Connect(function(payload)
+	ClientState.social = payload
+	socialEvent:Fire(payload)
+end)
+
 return ClientState
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="54">
+          <Item class="ModuleScript" referent="59">
+            <Properties>
+              <string name="Name">Panels</string>
+              <string name="Source"><![CDATA[--!strict
+-- ModuleScript: StarterPlayer > StarterPlayerScripts > Client > Modules > Panels
+-- Tiny registry mapping panel names to toggle functions, so the HUD's
+-- top-left icon menu can open any controller's window without the
+-- controllers knowing about each other.
+
+local Panels = {}
+
+local toggles: { [string]: () -> () } = {}
+
+function Panels.register(name: string, toggle: () -> ())
+	toggles[name] = toggle
+end
+
+function Panels.toggle(name: string)
+	local toggle = toggles[name]
+	if toggle then
+		toggle()
+	end
+end
+
+return Panels
+]]></string>
+            </Properties>
+          </Item>
+          <Item class="ModuleScript" referent="60">
             <Properties>
               <string name="Name">UiKit</string>
               <string name="Source"><![CDATA[--!strict
@@ -7206,6 +9088,26 @@ local function stroked(instance: GuiObject, color: Color3?, thickness: number?)
 	stroke.Parent = instance
 end
 
+-- The ink-kit double frame: an outer stroke plus an inset inner line, the
+-- way brush-drawn UI borders its buttons and panels.
+local function doubleBorder(instance: GuiObject, thickness: number?)
+	local bg = instance.BackgroundColor3
+	local darkGround = (bg.R + bg.G + bg.B) / 3 < 0.5
+	local lineColor = if darkGround then UiKit.Colors.panel else UiKit.Colors.ink
+	stroked(instance, lineColor, thickness or 1.6)
+	local inner = Instance.new("Frame")
+	inner.BackgroundTransparency = 1
+	inner.Size = UDim2.new(1, -8, 1, -8)
+	inner.Position = UDim2.fromOffset(4, 4)
+	inner.Parent = instance
+	rounded(inner, 3)
+	local innerStroke = Instance.new("UIStroke")
+	innerStroke.Color = lineColor
+	innerStroke.Thickness = 1
+	innerStroke.Transparency = 0.35
+	innerStroke.Parent = inner
+end
+
 function UiKit.frame(parent: Instance, size: UDim2, position: UDim2, color: Color3?): Frame
 	local frame = Instance.new("Frame")
 	frame.Size = size
@@ -7252,7 +9154,36 @@ function UiKit.button(parent: Instance, text: string, size: UDim2, position: UDi
 	button.AutoButtonColor = true
 	button.Parent = parent
 	rounded(button)
-	stroked(button)
+	doubleBorder(button)
+	button.Activated:Connect(callback)
+	return button
+end
+
+-- A circular brush-ringed icon button carrying one hanzi glyph, with a tiny
+-- caption underneath. The top-left menu bar is a row of these.
+function UiKit.iconButton(parent: Instance, glyph: string, caption: string, position: UDim2, callback: () -> ()): TextButton
+	local button = Instance.new("TextButton")
+	button.Size = UDim2.fromOffset(40, 40)
+	button.Position = position
+	button.BackgroundColor3 = UiKit.Colors.panel
+	button.BorderSizePixel = 0
+	button.Text = glyph
+	button.TextSize = 20
+	button.TextColor3 = UiKit.Colors.ink
+	button.Font = Enum.Font.Garamond
+	button.AutoButtonColor = true
+	button.Parent = parent
+	rounded(button, 20)
+	stroked(button, UiKit.Colors.ink, 1.8)
+	local caption2 = Instance.new("TextLabel")
+	caption2.Size = UDim2.new(1, 12, 0, 12)
+	caption2.Position = UDim2.new(0, -6, 1, 2)
+	caption2.BackgroundTransparency = 1
+	caption2.Text = caption
+	caption2.TextSize = 10
+	caption2.TextColor3 = UiKit.Colors.textDim
+	caption2.Font = Enum.Font.Gotham
+	caption2.Parent = button
 	button.Activated:Connect(callback)
 	return button
 end
@@ -7305,13 +9236,18 @@ export type Bar = { frame: Frame, fill: Frame, label: TextLabel, set: (fraction:
 
 function UiKit.bar(parent: Instance, size: UDim2, position: UDim2, fillColor: Color3): Bar
 	local frame = UiKit.frame(parent, size, position, UiKit.Colors.inset)
+	-- Pill-shaped, like a loaded brush stroke.
+	local pill = frame:FindFirstChildOfClass("UICorner")
+	if pill then
+		pill.CornerRadius = UDim.new(1, 0)
+	end
 	stroked(frame)
 	local fill = Instance.new("Frame")
 	fill.Size = UDim2.fromScale(1, 1)
 	fill.BackgroundColor3 = fillColor
 	fill.BorderSizePixel = 0
 	fill.Parent = frame
-	rounded(fill)
+	rounded(fill, 999)
 	-- Outlined text stays legible over both the ink fill and the paper gap.
 	local label = UiKit.label(frame, "", UDim2.fromScale(1, 1), UDim2.fromScale(0, 0), {
 		textSize = 12,
@@ -7344,26 +9280,31 @@ function UiKit.window(name: string, title: string, size: UDim2, displayOrder: nu
 
 	local root = UiKit.frame(screen, size, UDim2.new(0.5, 0, 0.5, 0))
 	root.AnchorPoint = Vector2.new(0.5, 0.5)
-	stroked(root, UiKit.Colors.ink, 2)
+	doubleBorder(root, 2)
 
-	local titleBar = UiKit.frame(root, UDim2.new(1, 0, 0, 34), UDim2.fromOffset(0, 0), UiKit.Colors.ink)
-	UiKit.label(titleBar, title, UDim2.new(1, -50, 1, 0), UDim2.fromOffset(12, 0), {
-		textSize = 21,
+	-- Ink banner floating over the top edge, the way the kit titles panels.
+	local banner = UiKit.frame(root, UDim2.new(0.62, 0, 0, 32), UDim2.new(0.19, 0, 0, -14), UiKit.Colors.ink)
+	banner.ZIndex = 3
+	stroked(banner, UiKit.Colors.ink, 1.2)
+	local bannerText = UiKit.label(banner, title:upper(), UDim2.fromScale(1, 1), UDim2.fromScale(0, 0), {
+		textSize = 19,
 		color = UiKit.Colors.panel,
 		title = true,
+		xalign = Enum.TextXAlignment.Center,
 	})
+	bannerText.ZIndex = 4
 
 	local window: Window
 	local function setVisible(visible: boolean)
 		screen.Enabled = visible
 	end
-	UiKit.button(titleBar, "X", UDim2.fromOffset(26, 26), UDim2.new(1, -30, 0, 4), function()
+	UiKit.button(root, "X", UDim2.fromOffset(26, 26), UDim2.new(1, -32, 0, 6), function()
 		setVisible(false)
 	end, { color = UiKit.Colors.ink, textColor = UiKit.Colors.panel })
 
 	local body = Instance.new("Frame")
-	body.Size = UDim2.new(1, -16, 1, -46)
-	body.Position = UDim2.fromOffset(8, 38)
+	body.Size = UDim2.new(1, -20, 1, -48)
+	body.Position = UDim2.fromOffset(10, 36)
 	body.BackgroundTransparency = 1
 	body.Parent = root
 
@@ -7394,7 +9335,7 @@ return UiKit
       </Item>
     </Item>
   </Item>
-  <Item class="Workspace" referent="55">
+  <Item class="Workspace" referent="61">
     <Properties>
       <string name="Name">Workspace</string>
       <bool name="FilteringEnabled">true</bool>

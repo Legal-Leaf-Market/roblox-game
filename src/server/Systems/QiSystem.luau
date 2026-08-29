@@ -73,6 +73,20 @@ function QiSystem.CheckBreakthrough(player: Player)
 	data.raceSpins += Config.BREAKTHROUGH_RACE_SPINS
 	data.talentSpins += Config.BREAKTHROUGH_TALENT_SPINS
 
+	-- A disciple's breakthrough honors the master: their qi gain deepens.
+	if data.masterUserId then
+		local masterUserId = data.masterUserId :: number
+		local master = Players:GetPlayerByUserId(masterUserId)
+		local masterData = if master then DataService.Get(master) else nil
+		if master and masterData then
+			masterData.masterBonus = math.min(Config.MASTER_BONUS_CAP, masterData.masterBonus + Config.MASTER_BONUS_PER_BREAKTHROUGH)
+			DataService.Notify(master, `Your disciple {player.Name} has broken through! Your qi gain deepens (+{Config.MASTER_BONUS_PER_BREAKTHROUGH}x).`, Color3.fromRGB(255, 215, 120))
+			DataService.PushStats(master)
+		else
+			DataService.MailCredit(masterUserId, Config.MASTER_BONUS_PER_BREAKTHROUGH)
+		end
+	end
+
 	local newRealm = Realms[data.realm]
 	DataService.Notify(player, `Breakthrough! You have entered {newRealm.name}.`, Color3.fromRGB(255, 215, 120))
 	DataService.Notify(player, `The heavens grant destiny: +{Config.BREAKTHROUGH_RACE_SPINS} race spins, +{Config.BREAKTHROUGH_TALENT_SPINS} talent spins.`)
@@ -92,11 +106,46 @@ function QiSystem.CheckBreakthrough(player: Player)
 	DataService.PushDestiny(player)
 end
 
+-- Qi Step: qi flows over the feet. Costs qi every tick, grants speed via
+-- attributes the client's movement formula reads; the QiStepping attribute
+-- replicates, so every client can draw the foot glow.
+local qiStepping: { [Player]: boolean } = {}
+
+local function setQiStep(player: Player, active: boolean)
+	if active then
+		qiStepping[player] = true
+	else
+		qiStepping[player] = nil
+	end
+	local character = player.Character
+	local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
+	if humanoid then
+		humanoid:SetAttribute("QiStepBonus", if active then Config.QISTEP_SPEED_BONUS else 0)
+		humanoid:SetAttribute("QiStepping", active)
+	end
+end
+
 function QiSystem.Init()
 	local meditateSet = Net.remoteEvent("MeditateSet")
 	meditateSet.OnServerEvent:Connect(function(player, wants: unknown)
 		DataService.SetMeditating(player, wants == true)
 		DataService.PushStats(player)
+	end)
+
+	Net.remoteEvent("QiStepSet").OnServerEvent:Connect(function(player, wants: unknown)
+		local data = DataService.Get(player)
+		if data == nil then
+			return
+		end
+		if wants == true and data.qi < Config.QISTEP_DRAIN * 2 then
+			DataService.Notify(player, "Not enough qi to cover your feet.")
+			return
+		end
+		setQiStep(player, wants == true)
+	end)
+
+	Players.PlayerRemoving:Connect(function(player)
+		qiStepping[player] = nil
 	end)
 end
 
@@ -123,9 +172,20 @@ function QiSystem.Start()
 				end
 			end
 
-			local regen = realm.qiRegen * mods.qiRegenMult
+			-- Dao fortune from disciples adds whole multipliers to qi gain.
+			local regen = realm.qiRegen * (mods.qiRegenMult + data.masterBonus)
 			if meditating then
 				regen *= realm.meditateMult
+			end
+
+			-- Qi Step pays its toll before regen is applied.
+			if qiStepping[player] then
+				if data.qi <= Config.QISTEP_DRAIN then
+					setQiStep(player, false)
+					DataService.Notify(player, "Your qi runs thin; the light leaves your feet.")
+				else
+					data.qi -= Config.QISTEP_DRAIN
+				end
 			end
 
 			local changed = false

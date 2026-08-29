@@ -29,6 +29,24 @@ local Config = table.freeze({
 	-- Qi loop
 	QI_TICK_SECONDS = 1,
 	AUTOSAVE_SECONDS = 120,
+
+	-- Qi Step (O): qi over the feet, speed for drain
+	QISTEP_DRAIN = 4, -- qi per tick while active
+	QISTEP_SPEED_BONUS = 6, -- added walkspeed
+
+	-- Technique mastery
+	MASTERY_MAX_LEVEL = 10, -- at max, a technique can be passed down
+
+	-- Sects
+	SECT_CREATE_COST = 500, -- spirit stones
+	SECT_NAME_MIN = 3,
+	SECT_NAME_MAX = 24,
+	SECT_MEMBER_CAP = 50,
+
+	-- Master & disciple
+	MAX_DISCIPLES = 5,
+	MASTER_BONUS_PER_BREAKTHROUGH = 1, -- +1.0x qi gain per disciple breakthrough
+	MASTER_BONUS_CAP = 10, -- total bonus cap; tune before this becomes an economy
 })
 
 return Config

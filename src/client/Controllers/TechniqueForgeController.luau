@@ -19,6 +19,7 @@ local Realms = require(Shared:WaitForChild("Data"):WaitForChild("Realms"))
 
 local UiKit = require(script.Parent.Parent.Modules.UiKit)
 local ClientState = require(script.Parent.Parent.Modules.ClientState)
+local Panels = require(script.Parent.Parent.Modules.Panels)
 
 local TechniqueForgeController = {}
 
@@ -127,6 +128,56 @@ local function renderElements()
 	end
 end
 
+-- Small picker over the window: choose which online disciple inherits.
+local function openTeachPicker(techniqueId: string, techniqueName: string)
+	local existing = window.root:FindFirstChild("TeachPicker")
+	if existing then
+		existing:Destroy()
+	end
+	local social = ClientState.social
+	local online: { { userId: number, name: string } } = {}
+	if social then
+		for _, disciple in social.disciples do
+			if disciple.online then
+				table.insert(online, { userId = disciple.userId, name = disciple.name })
+			end
+		end
+	end
+
+	local picker = UiKit.frame(window.root, UDim2.fromOffset(280, 90 + math.max(1, #online) * 34), UDim2.new(0.5, -140, 0.5, -100), UiKit.Colors.panel)
+	picker.Name = "TeachPicker"
+	picker.ZIndex = 10
+	local pickerStroke = Instance.new("UIStroke")
+	pickerStroke.Color = UiKit.Colors.ink
+	pickerStroke.Thickness = 2
+	pickerStroke.Parent = picker
+	UiKit.label(picker, `Pass down {techniqueName} to:`, UDim2.new(1, -16, 0, 22), UDim2.fromOffset(8, 6), {
+		textSize = 13,
+		bold = true,
+		wrap = true,
+	}).ZIndex = 11
+	if #online == 0 then
+		UiKit.label(picker, "None of your disciples are here right now.", UDim2.new(1, -16, 0, 28), UDim2.fromOffset(8, 32), {
+			textSize = 12,
+			color = UiKit.Colors.textDim,
+			wrap = true,
+		}).ZIndex = 11
+	end
+	for index, disciple in online do
+		local button = UiKit.button(picker, disciple.name, UDim2.new(1, -16, 0, 28), UDim2.fromOffset(8, 32 + (index - 1) * 34), function()
+			task.spawn(function()
+				Net.remoteFunction("TeachTechnique"):InvokeServer({ id = techniqueId, targetUserId = disciple.userId })
+			end)
+			picker:Destroy()
+		end, { textSize = 13 })
+		button.ZIndex = 11
+	end
+	local closeButton = UiKit.button(picker, "Close", UDim2.new(1, -16, 0, 24), UDim2.new(0, 8, 1, -30), function()
+		picker:Destroy()
+	end, { textSize = 12, color = UiKit.Colors.ink, textColor = UiKit.Colors.panel })
+	closeButton.ZIndex = 11
+end
+
 local function renderMine()
 	clearList(myList)
 	local techniques = ClientState.techniques
@@ -140,7 +191,7 @@ local function renderMine()
 	end
 	for index, technique in techniques.techniques do
 		local element = Elements.get(technique.element)
-		local row = UiKit.frame(myList, UDim2.new(1, -8, 0, 54), UDim2.fromOffset(0, 0), UiKit.Colors.panelLight)
+		local row = UiKit.frame(myList, UDim2.new(1, -8, 0, 72), UDim2.fromOffset(0, 0), UiKit.Colors.panelLight)
 		row.LayoutOrder = index
 		local slotText = if slotOf[technique.id] then ` [{slotOf[technique.id]}]` else ""
 		UiKit.label(row, technique.name .. slotText, UDim2.new(1, -34, 0, 18), UDim2.fromOffset(6, 3), {
@@ -149,16 +200,34 @@ local function renderMine()
 			bold = true,
 		})
 		local form = Forms.get(technique.form)
-		UiKit.label(row, `{if form then form.name else technique.form} · {if element then element.name else "?"} · power {technique.power}`, UDim2.new(1, -34, 0, 14), UDim2.fromOffset(6, 20), {
+		local originText = if technique.origin then ` · inherited from {technique.origin}` else ""
+		UiKit.label(row, `{if form then form.name else technique.form} · {if element then element.name else "?"} · power {technique.power}{originText}`, UDim2.new(1, -34, 0, 14), UDim2.fromOffset(6, 20), {
 			textSize = 11,
 			color = UiKit.Colors.textDim,
 		})
+
+		local level, into, needed = TechniqueMath.masteryProgress(technique.masteryXp or 0)
+		local mastered = level >= TechniqueMath.MASTERY_MAX
+		local masteryText = if mastered
+			then "MASTERED · may be passed to a disciple"
+			else `Mastery {level}/{TechniqueMath.MASTERY_MAX} · {into}/{needed} to next`
+		UiKit.label(row, masteryText, UDim2.new(1, -34, 0, 13), UDim2.fromOffset(6, 35), {
+			textSize = 10,
+			color = if mastered then UiKit.Colors.danger else UiKit.Colors.textDim,
+			bold = mastered,
+		})
+
 		for slot = 1, Config.SLOT_COUNT do
-			UiKit.button(row, tostring(slot), UDim2.fromOffset(20, 16), UDim2.fromOffset(6 + (slot - 1) * 23, 35), function()
+			UiKit.button(row, tostring(slot), UDim2.fromOffset(20, 16), UDim2.fromOffset(6 + (slot - 1) * 23, 51), function()
 				task.spawn(function()
 					Net.remoteFunction("EquipTechnique"):InvokeServer({ slot = slot, id = technique.id })
 				end)
 			end, { textSize = 11 })
+		end
+		if mastered then
+			UiKit.button(row, "Teach", UDim2.fromOffset(48, 20), UDim2.new(1, -86, 0, 48), function()
+				openTeachPicker(technique.id, technique.name)
+			end, { textSize = 11, color = UiKit.Colors.ink, textColor = UiKit.Colors.panel })
 		end
 		UiKit.button(row, "X", UDim2.fromOffset(24, 24), UDim2.new(1, -30, 0, 4), function()
 			task.spawn(function()
@@ -170,6 +239,7 @@ end
 
 function TechniqueForgeController.Init()
 	window = UiKit.window("TechniqueForge", "Technique Forge", UDim2.fromOffset(760, 540), 40)
+	Panels.register("techniques", window.toggle)
 	local body = window.body
 
 	-- Column 1: category + forms
