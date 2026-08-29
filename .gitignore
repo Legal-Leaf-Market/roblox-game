@@ -1,0 +1,9 @@
+# Build output is committed deliberately (dist/Heavenpillar.rbxlx) so the
+# team can pull a playable place file without local tooling.
+dist/*
+!dist/Heavenpillar.rbxlx
+
+sourcemap.json
+*.rbxlx.lock
+*.rbxl.lock
+.DS_Store

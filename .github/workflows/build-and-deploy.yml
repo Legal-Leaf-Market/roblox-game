@@ -1,0 +1,70 @@
+# Build the place file on every push; publish to Roblox when the three
+# Open Cloud secrets are configured (ROBLOX_API_KEY, ROBLOX_UNIVERSE_ID,
+# ROBLOX_PLACE_ID). Without them the workflow still typechecks and builds,
+# and uploads the .rbxlx as an artifact.
+
+name: build-and-deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rojo
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          curl -sL https://github.com/rojo-rbx/rojo/releases/download/v7.4.4/rojo-7.4.4-linux-x86_64.zip -o rojo.zip
+          unzip -o rojo.zip -d "$HOME/.local/bin"
+          chmod +x "$HOME/.local/bin/rojo"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Install luau-lsp
+        run: |
+          curl -sL https://github.com/JohnnyMorganz/luau-lsp/releases/download/1.69.0/luau-lsp-linux.zip -o luau-lsp.zip
+          unzip -o luau-lsp.zip -d "$HOME/.local/bin"
+          chmod +x "$HOME/.local/bin/luau-lsp"
+
+      - name: Fetch Roblox API definitions
+        run: |
+          curl -sL https://raw.githubusercontent.com/JohnnyMorganz/luau-lsp/main/scripts/globalTypes.d.luau -o globalTypes.d.luau
+
+      - name: Typecheck
+        run: |
+          rojo sourcemap default.project.json -o sourcemap.json
+          luau-lsp analyze --sourcemap sourcemap.json --definitions globalTypes.d.luau src/
+
+      - name: Build place file
+        run: |
+          mkdir -p dist
+          rojo build default.project.json -o dist/Heavenpillar.rbxlx
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Heavenpillar-place
+          path: dist/Heavenpillar.rbxlx
+
+      - name: Publish to Roblox (Open Cloud)
+        if: ${{ github.ref == 'refs/heads/main' }}
+        env:
+          ROBLOX_API_KEY: ${{ secrets.ROBLOX_API_KEY }}
+          ROBLOX_UNIVERSE_ID: ${{ secrets.ROBLOX_UNIVERSE_ID }}
+          ROBLOX_PLACE_ID: ${{ secrets.ROBLOX_PLACE_ID }}
+        run: |
+          if [ -z "$ROBLOX_API_KEY" ] || [ -z "$ROBLOX_UNIVERSE_ID" ] || [ -z "$ROBLOX_PLACE_ID" ]; then
+            echo "Open Cloud secrets not configured; skipping publish."
+            echo "Set ROBLOX_API_KEY, ROBLOX_UNIVERSE_ID, ROBLOX_PLACE_ID in the repo secrets to enable auto-publish."
+            exit 0
+          fi
+          curl --fail -X POST \
+            -H "x-api-key: $ROBLOX_API_KEY" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @dist/Heavenpillar.rbxlx \
+            "https://apis.roblox.com/universes/v1/$ROBLOX_UNIVERSE_ID/places/$ROBLOX_PLACE_ID/versions?versionType=Published"
+          echo "Published."
