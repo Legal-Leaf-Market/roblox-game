@@ -88,13 +88,13 @@ function DialogueController.Init()
 		task.spawn(function()
 			Net.remoteFunction("MissionAction"):InvokeServer({ action = "accept" })
 		end)
-	end, { color = UiKit.Colors.gold, textColor = UiKit.Colors.ink })
+	end, { color = UiKit.Colors.gold, textColor = UiKit.Colors.panel })
 
 	turnInButton = UiKit.button(body, "Turn In Ore", UDim2.new(0.5, -6, 0, 38), UDim2.new(0.5, 6, 1, -42), function()
 		task.spawn(function()
 			Net.remoteFunction("MissionAction"):InvokeServer({ action = "turnin" })
 		end)
-	end, { color = UiKit.Colors.health, textColor = UiKit.Colors.ink })
+	end, { color = UiKit.Colors.health, textColor = UiKit.Colors.panel })
 
 	Net.remoteEvent("DwarfDialogue").OnClientEvent:Connect(onDialogue)
 end

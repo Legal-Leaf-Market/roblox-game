@@ -1,34 +1,36 @@
 --!strict
 -- ModuleScript: StarterPlayer > StarterPlayerScripts > Client > Modules > UiKit
--- Small UI construction kit shared by every controller: one dark ink-and-
--- gold theme, one way to make a window, a button, a bar. Controllers build
--- layouts; UiKit owns look and feel.
+-- Small UI construction kit shared by every controller. One theme: black
+-- ink on paper, the look of a Chinese manhwa page. Panels are paper,
+-- chrome is ink, and color appears only where it carries meaning
+-- (elements, rarities, danger).
 
 local Players = game:GetService("Players")
 
 local UiKit = {}
 
 UiKit.Colors = {
-	ink = Color3.fromRGB(18, 16, 22),
-	panel = Color3.fromRGB(28, 25, 34),
-	panelLight = Color3.fromRGB(42, 38, 50),
-	stroke = Color3.fromRGB(90, 80, 60),
-	gold = Color3.fromRGB(212, 175, 55),
-	text = Color3.fromRGB(235, 230, 215),
-	textDim = Color3.fromRGB(160, 155, 145),
-	qi = Color3.fromRGB(90, 200, 255),
-	xp = Color3.fromRGB(212, 175, 55),
-	health = Color3.fromRGB(120, 220, 120),
-	danger = Color3.fromRGB(220, 90, 80),
+	ink = Color3.fromRGB(27, 24, 21), -- the black: text, borders, fills
+	panel = Color3.fromRGB(246, 243, 233), -- paper: windows, panels
+	panelLight = Color3.fromRGB(255, 255, 253), -- raised paper: buttons
+	inset = Color3.fromRGB(234, 228, 212), -- recessed paper: lists, inputs
+	stroke = Color3.fromRGB(27, 24, 21),
+	gold = Color3.fromRGB(27, 24, 21), -- accent = ink in the manhwa theme
+	text = Color3.fromRGB(27, 24, 21),
+	textDim = Color3.fromRGB(88, 82, 72),
+	qi = Color3.fromRGB(35, 32, 28), -- bar fills stay monochrome
+	xp = Color3.fromRGB(107, 101, 90),
+	health = Color3.fromRGB(68, 64, 58),
+	danger = Color3.fromRGB(163, 46, 36), -- the one color: seal red
 }
 
 UiKit.RarityColors = {
-	common = Color3.fromRGB(180, 180, 180),
-	uncommon = Color3.fromRGB(110, 220, 130),
-	rare = Color3.fromRGB(90, 160, 255),
-	epic = Color3.fromRGB(190, 110, 255),
-	legendary = Color3.fromRGB(255, 170, 60),
-	mythic = Color3.fromRGB(255, 90, 90),
+	common = Color3.fromRGB(120, 114, 104),
+	uncommon = Color3.fromRGB(70, 130, 90),
+	rare = Color3.fromRGB(60, 100, 160),
+	epic = Color3.fromRGB(120, 70, 160),
+	legendary = Color3.fromRGB(180, 110, 30),
+	mythic = Color3.fromRGB(163, 46, 36),
 }
 
 local TITLE_FONT = Enum.Font.Garamond
@@ -48,15 +50,15 @@ end
 
 local function rounded(instance: GuiObject, radius: number?)
 	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, radius or 8)
+	corner.CornerRadius = UDim.new(0, radius or 4)
 	corner.Parent = instance
 end
 
 local function stroked(instance: GuiObject, color: Color3?, thickness: number?)
 	local stroke = Instance.new("UIStroke")
 	stroke.Color = color or UiKit.Colors.stroke
-	stroke.Thickness = thickness or 1
-	stroke.Transparency = 0.25
+	stroke.Thickness = thickness or 1.6
+	stroke.Transparency = 0
 	stroke.Parent = instance
 end
 
@@ -115,7 +117,7 @@ function UiKit.textBox(parent: Instance, placeholder: string, size: UDim2, posit
 	local box = Instance.new("TextBox")
 	box.Size = size
 	box.Position = position
-	box.BackgroundColor3 = UiKit.Colors.ink
+	box.BackgroundColor3 = UiKit.Colors.panelLight
 	box.BorderSizePixel = 0
 	box.PlaceholderText = placeholder
 	box.PlaceholderColor3 = UiKit.Colors.textDim
@@ -125,7 +127,7 @@ function UiKit.textBox(parent: Instance, placeholder: string, size: UDim2, posit
 	box.Font = BODY_FONT
 	box.ClearTextOnFocus = false
 	box.Parent = parent
-	rounded(box, 6)
+	rounded(box, 4)
 	stroked(box)
 	return box
 end
@@ -134,13 +136,14 @@ function UiKit.scroll(parent: Instance, size: UDim2, position: UDim2): (Scrollin
 	local scroll = Instance.new("ScrollingFrame")
 	scroll.Size = size
 	scroll.Position = position
-	scroll.BackgroundColor3 = UiKit.Colors.ink
+	scroll.BackgroundColor3 = UiKit.Colors.inset
 	scroll.BorderSizePixel = 0
 	scroll.ScrollBarThickness = 6
+	scroll.ScrollBarImageColor3 = UiKit.Colors.ink
 	scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
 	scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
 	scroll.Parent = parent
-	rounded(scroll, 6)
+	rounded(scroll, 4)
 	local layout = Instance.new("UIListLayout")
 	layout.Padding = UDim.new(0, 4)
 	layout.SortOrder = Enum.SortOrder.LayoutOrder
@@ -157,7 +160,7 @@ end
 export type Bar = { frame: Frame, fill: Frame, label: TextLabel, set: (fraction: number, text: string) -> () }
 
 function UiKit.bar(parent: Instance, size: UDim2, position: UDim2, fillColor: Color3): Bar
-	local frame = UiKit.frame(parent, size, position, UiKit.Colors.ink)
+	local frame = UiKit.frame(parent, size, position, UiKit.Colors.inset)
 	stroked(frame)
 	local fill = Instance.new("Frame")
 	fill.Size = UDim2.fromScale(1, 1)
@@ -165,11 +168,15 @@ function UiKit.bar(parent: Instance, size: UDim2, position: UDim2, fillColor: Co
 	fill.BorderSizePixel = 0
 	fill.Parent = frame
 	rounded(fill)
+	-- Outlined text stays legible over both the ink fill and the paper gap.
 	local label = UiKit.label(frame, "", UDim2.fromScale(1, 1), UDim2.fromScale(0, 0), {
 		textSize = 12,
 		xalign = Enum.TextXAlignment.Center,
 		bold = true,
+		color = UiKit.Colors.panel,
 	})
+	label.TextStrokeColor3 = UiKit.Colors.ink
+	label.TextStrokeTransparency = 0
 	label.ZIndex = 3
 	local bar: Bar
 	bar = {
@@ -184,7 +191,7 @@ function UiKit.bar(parent: Instance, size: UDim2, position: UDim2, fillColor: Co
 	return bar
 end
 
--- A draggable-feeling centered window with a title bar and close button.
+-- A centered window: paper body, ink title bar, brush-serif title.
 export type Window = { screen: ScreenGui, root: Frame, body: Frame, setVisible: (visible: boolean) -> (), toggle: () -> (), visible: () -> boolean }
 
 function UiKit.window(name: string, title: string, size: UDim2, displayOrder: number): Window
@@ -193,12 +200,12 @@ function UiKit.window(name: string, title: string, size: UDim2, displayOrder: nu
 
 	local root = UiKit.frame(screen, size, UDim2.new(0.5, 0, 0.5, 0))
 	root.AnchorPoint = Vector2.new(0.5, 0.5)
-	stroked(root, UiKit.Colors.gold, 1)
+	stroked(root, UiKit.Colors.ink, 2)
 
 	local titleBar = UiKit.frame(root, UDim2.new(1, 0, 0, 34), UDim2.fromOffset(0, 0), UiKit.Colors.ink)
 	UiKit.label(titleBar, title, UDim2.new(1, -50, 1, 0), UDim2.fromOffset(12, 0), {
-		textSize = 20,
-		color = UiKit.Colors.gold,
+		textSize = 21,
+		color = UiKit.Colors.panel,
 		title = true,
 	})
 
@@ -208,7 +215,7 @@ function UiKit.window(name: string, title: string, size: UDim2, displayOrder: nu
 	end
 	UiKit.button(titleBar, "X", UDim2.fromOffset(26, 26), UDim2.new(1, -30, 0, 4), function()
 		setVisible(false)
-	end, { color = UiKit.Colors.panel })
+	end, { color = UiKit.Colors.ink, textColor = UiKit.Colors.panel })
 
 	local body = Instance.new("Frame")
 	body.Size = UDim2.new(1, -16, 1, -46)

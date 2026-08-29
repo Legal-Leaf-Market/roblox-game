@@ -45,11 +45,12 @@ function MenuController.Init()
 	blur.Size = 18
 	blur.Parent = Lighting
 
-	-- Dark wash over the whole viewport.
+	-- Paper mist over the whole viewport: with the blur behind it, the world
+	-- reads like an unfinished ink painting.
 	local wash = Instance.new("Frame")
 	wash.Size = UDim2.fromScale(1, 1)
-	wash.BackgroundColor3 = UiKit.Colors.ink
-	wash.BackgroundTransparency = 0.25
+	wash.BackgroundColor3 = UiKit.Colors.panel
+	wash.BackgroundTransparency = 0.2
 	wash.BorderSizePixel = 0
 	wash.Parent = screen
 
@@ -70,7 +71,7 @@ function MenuController.Init()
 	})
 
 	-- Sub-panels: settings and controls swap into this region.
-	local subPanel = UiKit.frame(panel, UDim2.new(1, -40, 0, 150), UDim2.fromOffset(20, 250), UiKit.Colors.ink)
+	local subPanel = UiKit.frame(panel, UDim2.new(1, -40, 0, 150), UDim2.fromOffset(20, 250), UiKit.Colors.inset)
 	subPanel.Visible = false
 	local subMode = ""
 
@@ -106,7 +107,7 @@ function MenuController.Init()
 					local on = ClientSettings.get(entry.key)
 					toggle.Text = if on then "ON" else "OFF"
 					toggle.BackgroundColor3 = if on then UiKit.Colors.gold else UiKit.Colors.panelLight
-					toggle.TextColor3 = if on then UiKit.Colors.ink else UiKit.Colors.text
+					toggle.TextColor3 = if on then UiKit.Colors.panel else UiKit.Colors.text
 				end
 				toggle = UiKit.button(subPanel, "ON", UDim2.fromOffset(84, 32), UDim2.new(1, -100, 0, y), function()
 					ClientSettings.set(entry.key, not ClientSettings.get(entry.key))
@@ -120,7 +121,7 @@ function MenuController.Init()
 	UiKit.button(panel, "Enter the World", UDim2.new(1, -80, 0, 46), UDim2.fromOffset(40, 122), function()
 		showSub("")
 		setOpen(false)
-	end, { color = UiKit.Colors.gold, textColor = UiKit.Colors.ink, textSize = 18 })
+	end, { color = UiKit.Colors.gold, textColor = UiKit.Colors.panel, textSize = 18 })
 
 	UiKit.button(panel, "Settings", UDim2.new(0.5, -50, 0, 38), UDim2.fromOffset(40, 180), function()
 		showSub("settings")

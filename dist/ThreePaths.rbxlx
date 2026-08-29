@@ -4140,6 +4140,174 @@ function BuildKit.wallZ(parent: Instance, name: string, x: number, z1: number, z
 	end
 end
 
+function BuildKit.wedgePart(props: PartProps): WedgePart
+	local wedge = Instance.new("WedgePart")
+	wedge.Name = props.name or "Wedge"
+	wedge.Size = props.size
+	if props.cframe then
+		wedge.CFrame = props.cframe
+	elseif props.position then
+		wedge.Position = props.position
+	end
+	wedge.Color = props.color or Color3.fromRGB(163, 162, 165)
+	wedge.Material = props.material or Enum.Material.SmoothPlastic
+	wedge.Transparency = props.transparency or 0
+	wedge.CanCollide = if props.canCollide == nil then true else props.canCollide
+	wedge.Anchored = true
+	wedge.TopSurface = Enum.SurfaceType.Smooth
+	wedge.BottomSurface = Enum.SurfaceType.Smooth
+	wedge.Parent = props.parent
+	return wedge
+end
+
+-- A Chinese tiled roof layer: flat cap plus four outward-sloping eave
+-- wedges hanging past the walls. `y` is the underside of the roof.
+function BuildKit.chineseRoof(parent: Instance, center: Vector3, width: number, depth: number, y: number, roofColor: Color3)
+	local overhang = 3.5
+	local capW = width + overhang * 2
+	local capD = depth + overhang * 2
+	BuildKit.part({
+		name = "Roof_Cap",
+		size = Vector3.new(capW, 1, capD),
+		position = Vector3.new(center.X, y + 0.5, center.Z),
+		color = roofColor,
+		material = Enum.Material.Slate,
+		parent = parent,
+	})
+	-- Eaves on each side, sloping down and out.
+	local eaveH = 1.8
+	local sides = {
+		{ dir = Vector3.new(0, 0, 1), len = capW },
+		{ dir = Vector3.new(0, 0, -1), len = capW },
+		{ dir = Vector3.new(1, 0, 0), len = capD },
+		{ dir = Vector3.new(-1, 0, 0), len = capD },
+	}
+	for _, side in sides do
+		local edge = Vector3.new(center.X, y + 0.4, center.Z)
+			+ side.dir * (if side.dir.Z ~= 0 then capD / 2 + 1.4 else capW / 2 + 1.4)
+		BuildKit.wedgePart({
+			name = "Roof_Eave",
+			size = Vector3.new(side.len + 2, eaveH, 3),
+			cframe = CFrame.lookAt(edge, edge + side.dir) * CFrame.Angles(0, math.pi, 0),
+			color = roofColor,
+			material = Enum.Material.Slate,
+			canCollide = false,
+			parent = parent,
+		})
+	end
+	-- Ridge beam along the longer axis.
+	local ridgeAlongX = width >= depth
+	BuildKit.part({
+		name = "Roof_Ridge",
+		size = if ridgeAlongX then Vector3.new(width * 0.7, 1, 1.6) else Vector3.new(1.6, 1, depth * 0.7),
+		position = Vector3.new(center.X, y + 1.4, center.Z),
+		color = roofColor,
+		material = Enum.Material.Slate,
+		parent = parent,
+	})
+end
+
+-- A multi-story pagoda-style house: plaster walls, timber corner posts,
+-- a tiled roof over every floor, each floor slightly narrower.
+function BuildKit.pagodaHouse(parent: Instance, center: Vector3, width: number, depth: number, floors: number, plaster: Color3, timber: Color3, roofColor: Color3)
+	local floorHeight = 9
+	local y = center.Y
+	local w, d = width, depth
+	for _ = 1, floors do
+		BuildKit.part({
+			name = "House_Wall",
+			size = Vector3.new(w, floorHeight, d),
+			position = Vector3.new(center.X, y + floorHeight / 2, center.Z),
+			color = plaster,
+			material = Enum.Material.SmoothPlastic,
+			parent = parent,
+		})
+		for cx = -1, 1, 2 do
+			for cz = -1, 1, 2 do
+				BuildKit.part({
+					name = "House_Post",
+					size = Vector3.new(1.2, floorHeight, 1.2),
+					position = Vector3.new(center.X + cx * (w / 2), y + floorHeight / 2, center.Z + cz * (d / 2)),
+					color = timber,
+					material = Enum.Material.Wood,
+					parent = parent,
+				})
+			end
+		end
+		BuildKit.chineseRoof(parent, Vector3.new(center.X, 0, center.Z), w, d, y + floorHeight, roofColor)
+		y += floorHeight + 1.4
+		w *= 0.78
+		d *= 0.78
+	end
+	-- Finial at the peak.
+	BuildKit.part({
+		name = "House_Finial",
+		size = Vector3.new(0.9, 2.4, 0.9),
+		position = Vector3.new(center.X, y + 1.2, center.Z),
+		color = Color3.fromRGB(212, 175, 55),
+		material = Enum.Material.Metal,
+		canCollide = false,
+		parent = parent,
+	})
+end
+
+-- A paifang: the ceremonial gate arch that marks a Chinese city entrance.
+-- Returns the signboard part so callers can hang a label on it.
+function BuildKit.paifang(parent: Instance, center: Vector3, facing: Vector3, width: number, timber: Color3, roofColor: Color3): Part
+	local side = Vector3.new(-facing.Z, 0, facing.X)
+	local pillarHeight = 17
+	for s = -1, 1, 2 do
+		BuildKit.part({
+			name = "Paifang_Pillar",
+			size = Vector3.new(2, pillarHeight, 2),
+			position = center + side * (s * width / 2) + Vector3.new(0, pillarHeight / 2, 0),
+			color = timber,
+			material = Enum.Material.Wood,
+			parent = parent,
+		})
+	end
+	local lintelCF = CFrame.lookAt(center + Vector3.new(0, pillarHeight - 1, 0), center + Vector3.new(0, pillarHeight - 1, 0) + facing)
+	BuildKit.part({
+		name = "Paifang_Lintel",
+		size = Vector3.new(width + 5, 1.6, 2.4),
+		cframe = lintelCF,
+		color = timber,
+		material = Enum.Material.Wood,
+		parent = parent,
+	})
+	local sign = BuildKit.part({
+		name = "Paifang_Sign",
+		size = Vector3.new(width * 0.55, 3, 1.2),
+		cframe = lintelCF * CFrame.new(0, 2.4, 0),
+		color = Color3.fromRGB(32, 28, 26),
+		material = Enum.Material.Wood,
+		parent = parent,
+	})
+	-- Little roof riding the top.
+	local roofCenter = center + Vector3.new(0, 0, 0)
+	BuildKit.chineseRoof(parent, roofCenter, width * 0.7, 4, pillarHeight + 3.2, roofColor)
+	return sign
+end
+
+-- An open pavilion: four posts and a tiered roof, no walls. Shelters shrines.
+function BuildKit.pavilion(parent: Instance, center: Vector3, size: number, timber: Color3, roofColor: Color3)
+	local postHeight = 13
+	for cx = -1, 1, 2 do
+		for cz = -1, 1, 2 do
+			BuildKit.part({
+				name = "Pavilion_Post",
+				size = Vector3.new(1.4, postHeight, 1.4),
+				position = center + Vector3.new(cx * size / 2, postHeight / 2, cz * size / 2),
+				color = timber,
+				material = Enum.Material.Wood,
+				parent = parent,
+			})
+		end
+	end
+	BuildKit.chineseRoof(parent, Vector3.new(center.X, 0, center.Z), size + 2, size + 2, center.Y + postHeight, roofColor)
+	BuildKit.chineseRoof(parent, Vector3.new(center.X, 0, center.Z), size * 0.5, size * 0.5, center.Y + postHeight + 3.4, roofColor)
+end
+
 -- Vertical-axis cylinder (Roblox cylinders lie along local X; we stand it up).
 function BuildKit.cylinder(parent: Instance, name: string, center: Vector3, height: number, diameter: number, color: Color3, material: Enum.Material): Part
 	return BuildKit.part({
@@ -4340,6 +4508,16 @@ local WALL_HEIGHT = 20
 local WALL_THICKNESS = 4
 local GATE_WIDTH = 30
 
+local PLASTER = Color3.fromRGB(238, 231, 214)
+local TIMBER = Color3.fromRGB(74, 53, 39)
+
+-- Dark tiled roofs, tinted per path so each city reads at a glance.
+local ROOF_COLORS: { [string]: Color3 } = {
+	orthodox = Color3.fromRGB(58, 74, 92),
+	unorthodox = Color3.fromRGB(52, 73, 59),
+	demonic = Color3.fromRGB(38, 30, 32),
+}
+
 type CitySpec = {
 	pathId: string,
 	angle: number, -- degrees around the mountain, 0 = +Z (south)
@@ -4365,6 +4543,7 @@ local function buildCity(parent: Instance, spec: CitySpec)
 
 	local stone = path.primaryColor
 	local accent = path.accentColor
+	local roofColor = ROOF_COLORS[spec.pathId] or Color3.fromRGB(45, 42, 44)
 	local half = PLAZA / 2
 
 	-- Plaza floor.
@@ -4398,27 +4577,29 @@ local function buildCity(parent: Instance, spec: CitySpec)
 	BuildKit.wallZ(city, "Wall_E", east, north, south, 0, WALL_HEIGHT, WALL_THICKNESS, stone, Enum.Material.Slate,
 		if gateEast then center.Z else nil, if gateEast then GATE_WIDTH else nil)
 
-	-- Gate sign floating over the opening.
+	-- Tiled coping caps the walls, with the same gate gaps.
+	BuildKit.wallX(city, "Coping_N", north, west - 1, east + 1, WALL_HEIGHT, 1.4, WALL_THICKNESS + 3, roofColor, Enum.Material.Slate,
+		if gateNorth then center.X else nil, if gateNorth then GATE_WIDTH else nil)
+	BuildKit.wallX(city, "Coping_S", south, west - 1, east + 1, WALL_HEIGHT, 1.4, WALL_THICKNESS + 3, roofColor, Enum.Material.Slate,
+		if gateSouth then center.X else nil, if gateSouth then GATE_WIDTH else nil)
+	BuildKit.wallZ(city, "Coping_W", west, north - 1, south + 1, WALL_HEIGHT, 1.4, WALL_THICKNESS + 3, roofColor, Enum.Material.Slate,
+		if gateWest then center.Z else nil, if gateWest then GATE_WIDTH else nil)
+	BuildKit.wallZ(city, "Coping_E", east, north - 1, south + 1, WALL_HEIGHT, 1.4, WALL_THICKNESS + 3, roofColor, Enum.Material.Slate,
+		if gateEast then center.Z else nil, if gateEast then GATE_WIDTH else nil)
+
+	-- Paifang arch standing just outside the gate opening.
 	local gateWallPos: Vector3
 	if gateNorth then
-		gateWallPos = Vector3.new(center.X, WALL_HEIGHT + 4, north)
+		gateWallPos = Vector3.new(center.X, 0, north)
 	elseif gateSouth then
-		gateWallPos = Vector3.new(center.X, WALL_HEIGHT + 4, south)
+		gateWallPos = Vector3.new(center.X, 0, south)
 	elseif gateWest then
-		gateWallPos = Vector3.new(west, WALL_HEIGHT + 4, center.Z)
+		gateWallPos = Vector3.new(west, 0, center.Z)
 	else
-		gateWallPos = Vector3.new(east, WALL_HEIGHT + 4, center.Z)
+		gateWallPos = Vector3.new(east, 0, center.Z)
 	end
-	local signPost = BuildKit.part({
-		name = "GateSign",
-		size = Vector3.new(2, 2, 2),
-		position = gateWallPos,
-		color = accent,
-		material = Enum.Material.Neon,
-		canCollide = false,
-		parent = city,
-	})
-	BuildKit.billboard(signPost, `{path.cityName}\n{path.name}`, accent, 18, 3, Vector3.new(0, 3, 0))
+	local sign = BuildKit.paifang(city, gateWallPos + gateDir * 12, gateDir, GATE_WIDTH + 6, TIMBER, roofColor)
+	BuildKit.billboard(sign, `{path.cityName}\n{path.name}`, accent, 18, 3, Vector3.new(0, 4, 0))
 
 	-- Pledge shrine at the back of the plaza (opposite the gate).
 	local shrinePos = center - gateDir * (half * 0.55)
@@ -4436,11 +4617,12 @@ local function buildCity(parent: Instance, spec: CitySpec)
 	BuildKit.prompt(monolith, "Pledge", path.name, 2, nil)
 	BuildKit.billboard(monolith, `Shrine of the {path.name}\n"{path.blurb}"`, accent, 22, 3.4, Vector3.new(0, 9, 0))
 	BuildKit.pointLight(dais, accent, 2, 30)
+	BuildKit.pavilion(city, shrinePos, 18, TIMBER, roofColor)
 
 	-- Team spawn beside the shrine.
 	BuildKit.spawnLocation(city, shrinePos + gateDir * 18 + Vector3.new(0, 1, 0), path.teamBrickColor, false)
 
-	-- Homes in the four plaza corners.
+	-- Pagoda homes in the plaza corners: two-story, tiled, timber-framed.
 	for cx = -1, 1, 2 do
 		for cz = -1, 1, 2 do
 			local homeCenter = center + Vector3.new(cx * half * 0.6, 0, cz * half * 0.6)
@@ -4448,46 +4630,34 @@ local function buildCity(parent: Instance, spec: CitySpec)
 			if (homeCenter - shrinePos).Magnitude < 30 then
 				continue
 			end
-			BuildKit.part({
-				name = "Home",
-				size = Vector3.new(24, 12, 20),
-				position = homeCenter + Vector3.new(0, 6, 0),
-				color = stone,
-				material = Enum.Material.WoodPlanks,
-				parent = city,
-			})
-			BuildKit.part({
-				name = "Home_Roof",
-				size = Vector3.new(30, 2, 26),
-				position = homeCenter + Vector3.new(0, 13, 0),
-				color = accent,
-				material = Enum.Material.Slate,
-				parent = city,
-			})
+			BuildKit.pagodaHouse(city, homeCenter, 24, 20, 2, PLASTER, TIMBER, roofColor)
 		end
 	end
+	-- One taller tower opposite the shrine: the sect hall.
+	BuildKit.pagodaHouse(city, center + gateDir * (half * 0.28) + Vector3.new(0, 0, 0), 20, 20, 3, PLASTER, TIMBER, roofColor)
 
-	-- Lantern posts at the plaza corners.
+	-- Red lanterns at the plaza corners; every Chinese city street has them.
+	local lanternRed = Color3.fromRGB(210, 60, 45)
 	for cx = -1, 1, 2 do
 		for cz = -1, 1, 2 do
 			local post = BuildKit.part({
 				name = "Lantern",
 				size = Vector3.new(1, 11, 1),
 				position = center + Vector3.new(cx * (half - 8), 5.5, cz * (half - 8)),
-				color = Color3.fromRGB(60, 50, 45),
+				color = TIMBER,
 				material = Enum.Material.Wood,
 				parent = city,
 			})
 			local lamp = BuildKit.part({
 				name = "Lantern_Light",
-				size = Vector3.new(2, 2.6, 2),
+				size = Vector3.new(2.2, 2.8, 2.2),
 				position = post.Position + Vector3.new(0, 6.5, 0),
-				color = accent,
+				color = lanternRed,
 				material = Enum.Material.Neon,
 				canCollide = false,
 				parent = city,
 			})
-			BuildKit.pointLight(lamp, accent, 1.6, 26)
+			BuildKit.pointLight(lamp, Color3.fromRGB(255, 150, 110), 1.6, 26)
 		end
 	end
 
@@ -4663,32 +4833,169 @@ local function buildWandererSpawn(parent: Instance)
 	BuildKit.billboard(plaza, "Wayfarer's Rest. Three cities, three paths. Choose with care; a dao is for life.", Color3.fromRGB(235, 230, 215), 20, 2, Vector3.new(0, 10, 0))
 end
 
-local function buildTrees(parent: Instance)
-	local rng = Random.new(7) -- deterministic: same forest every server
-	for _ = 1, 40 do
-		local angle = rng:NextNumber(0, math.pi * 2)
-		local radius = rng:NextNumber(470, 900)
-		local x = math.cos(angle) * radius
-		local z = math.sin(angle) * radius
-		local height = rng:NextNumber(12, 20)
+-- A soft foliage puff: a part carrying a sphere mesh so it can be scaled
+-- into an ellipsoid (Ball-shaped Parts cannot).
+local function puff(parent: Instance, position: Vector3, size: Vector3, color: Color3)
+	local part = BuildKit.part({
+		name = "Foliage",
+		size = Vector3.new(1, 1, 1),
+		position = position,
+		color = color,
+		material = Enum.Material.Grass,
+		canCollide = false,
+		parent = parent,
+	})
+	local mesh = Instance.new("SpecialMesh")
+	mesh.MeshType = Enum.MeshType.Sphere
+	mesh.Scale = size
+	mesh.Parent = part
+end
+
+local TRUNK = Color3.fromRGB(92, 70, 52)
+local PINE_GREEN = Color3.fromRGB(52, 84, 60)
+local PINE_DARK = Color3.fromRGB(40, 66, 48)
+local BLOSSOM_PINK = Color3.fromRGB(240, 184, 205)
+local BLOSSOM_WHITE = Color3.fromRGB(246, 238, 230)
+local BAMBOO_GREEN = Color3.fromRGB(126, 168, 92)
+
+-- Ink-painting pine: a leaning trunk with flat, layered canopy discs.
+local function pineTree(parent: Instance, position: Vector3, rng: Random)
+	local height = rng:NextNumber(14, 22)
+	local lean = rng:NextNumber(-0.09, 0.09)
+	BuildKit.part({
+		name = "Pine_Trunk",
+		size = Vector3.new(1.8, height, 1.8),
+		cframe = CFrame.new(position + Vector3.new(0, height / 2, 0)) * CFrame.Angles(lean, 0, lean),
+		color = TRUNK,
+		material = Enum.Material.Wood,
+		parent = parent,
+	})
+	local layers = rng:NextInteger(3, 4)
+	for layer = 1, layers do
+		local t = (layer - 1) / layers
+		local layerY = position.Y + height * (0.5 + 0.55 * t)
+		local diameter = (14 - t * 8) * rng:NextNumber(0.9, 1.15)
+		BuildKit.cylinder(
+			parent,
+			"Pine_Canopy",
+			Vector3.new(position.X + lean * height * t * 6, layerY, position.Z + lean * height * t * 6),
+			1.4,
+			diameter,
+			if layer % 2 == 0 then PINE_DARK else PINE_GREEN,
+			Enum.Material.Grass
+		)
+	end
+end
+
+-- Blossom tree: leaning trunk, clustered pink and white puffs.
+local function blossomTree(parent: Instance, position: Vector3, rng: Random)
+	local height = rng:NextNumber(10, 15)
+	local lean = rng:NextNumber(-0.14, 0.14)
+	BuildKit.part({
+		name = "Blossom_Trunk",
+		size = Vector3.new(1.6, height, 1.6),
+		cframe = CFrame.new(position + Vector3.new(0, height / 2, 0)) * CFrame.Angles(lean, 0, -lean),
+		color = Color3.fromRGB(70, 54, 44),
+		material = Enum.Material.Wood,
+		parent = parent,
+	})
+	local crown = position + Vector3.new(lean * height * 4, height, lean * height * 4)
+	local puffs = rng:NextInteger(4, 6)
+	for _ = 1, puffs do
+		local offset = Vector3.new(rng:NextNumber(-5, 5), rng:NextNumber(-1, 4), rng:NextNumber(-5, 5))
+		local width = rng:NextNumber(6, 10)
+		puff(parent, crown + offset, Vector3.new(width, width * 0.65, width),
+			if rng:NextNumber() < 0.7 then BLOSSOM_PINK else BLOSSOM_WHITE)
+	end
+end
+
+-- Bamboo clump: a handful of thin, tall culms with small leaf puffs.
+local function bambooClump(parent: Instance, position: Vector3, rng: Random)
+	for _ = 1, rng:NextInteger(5, 8) do
+		local culmHeight = rng:NextNumber(16, 26)
+		local offset = Vector3.new(rng:NextNumber(-4, 4), 0, rng:NextNumber(-4, 4))
+		local base = position + offset
 		BuildKit.part({
-			name = "Tree_Trunk",
-			size = Vector3.new(2, height, 2),
-			position = Vector3.new(x, Overworld.GROUND_TOP + height / 2, z),
-			color = Color3.fromRGB(105, 80, 60),
-			material = Enum.Material.Wood,
+			name = "Bamboo_Culm",
+			size = Vector3.new(0.7, culmHeight, 0.7),
+			cframe = CFrame.new(base + Vector3.new(0, culmHeight / 2, 0)) * CFrame.Angles(rng:NextNumber(-0.05, 0.05), 0, rng:NextNumber(-0.05, 0.05)),
+			color = BAMBOO_GREEN,
+			material = Enum.Material.SmoothPlastic,
 			parent = parent,
 		})
+		puff(parent, base + Vector3.new(0, culmHeight, 0), Vector3.new(4, 2.5, 4), Color3.fromRGB(110, 150, 82))
+	end
+end
+
+local function buildFlora(parent: Instance)
+	local rng = Random.new(7) -- deterministic: same forest every server
+	for _ = 1, 70 do
+		local angle = rng:NextNumber(0, math.pi * 2)
+		local radius = rng:NextNumber(460, 940)
+		local position = Vector3.new(math.cos(angle) * radius, Overworld.GROUND_TOP, math.sin(angle) * radius)
+		-- Southeast quadrant grows bamboo (Freewind country); elsewhere
+		-- pines dominate with blossoms scattered through.
+		if position.X > 120 and position.Z > 60 and rng:NextNumber() < 0.5 then
+			bambooClump(parent, position, rng)
+		elseif rng:NextNumber() < 0.35 then
+			blossomTree(parent, position, rng)
+		else
+			pineTree(parent, position, rng)
+		end
+	end
+	-- A few blossoms right around the Wayfarer's Rest for the first view.
+	for _ = 1, 5 do
+		local angle = rng:NextNumber(0, math.pi * 2)
+		blossomTree(parent, Vector3.new(math.cos(angle) * rng:NextNumber(45, 70), Overworld.GROUND_TOP, 170 + math.sin(angle) * rng:NextNumber(45, 70)), rng)
+	end
+
+	-- Boulders, half-set into the grass.
+	for _ = 1, 26 do
+		local angle = rng:NextNumber(0, math.pi * 2)
+		local radius = rng:NextNumber(300, 900)
+		local size = rng:NextNumber(3, 9)
 		BuildKit.part({
-			name = "Tree_Canopy",
-			size = Vector3.new(rng:NextNumber(9, 14), rng:NextNumber(7, 10), rng:NextNumber(9, 14)),
-			position = Vector3.new(x, Overworld.GROUND_TOP + height + 3, z),
-			color = if rng:NextNumber() < 0.35 then Color3.fromRGB(235, 170, 200) else Color3.fromRGB(90, 150, 90),
-			material = Enum.Material.Grass,
+			name = "Boulder",
+			size = Vector3.new(size, size * 0.7, size * rng:NextNumber(0.7, 1.3)),
+			cframe = CFrame.new(math.cos(angle) * radius, Overworld.GROUND_TOP + size * 0.2, math.sin(angle) * radius)
+				* CFrame.Angles(rng:NextNumber(0, 0.4), rng:NextNumber(0, math.pi), rng:NextNumber(0, 0.3)),
+			color = Color3.fromRGB(120, 116, 112),
+			material = Enum.Material.Slate,
+			parent = parent,
+		})
+	end
+end
+
+-- A ring road around the mountain plus a spur, so the three cities and the
+-- mine read as connected places instead of objects dropped on a lawn.
+local function buildRoads(parent: Instance)
+	local roadColor = Color3.fromRGB(203, 194, 172)
+	local function road(from: Vector3, to: Vector3, width: number)
+		local mid = (from + to) / 2 + Vector3.new(0, 0.15, 0)
+		BuildKit.part({
+			name = "Road",
+			size = Vector3.new(width, 0.35, (to - from).Magnitude + width * 0.5),
+			cframe = CFrame.lookAt(mid, Vector3.new(to.X, mid.Y, to.Z)),
+			color = roadColor,
+			material = Enum.Material.Cobblestone,
 			canCollide = false,
 			parent = parent,
 		})
 	end
+
+	local segments = 22
+	local ringRadius = 302
+	for index = 1, segments do
+		local a1 = (index - 1) / segments * math.pi * 2
+		local a2 = index / segments * math.pi * 2
+		road(
+			Vector3.new(math.sin(a1) * ringRadius, Overworld.GROUND_TOP, math.cos(a1) * ringRadius),
+			Vector3.new(math.sin(a2) * ringRadius, Overworld.GROUND_TOP, math.cos(a2) * ringRadius),
+			9
+		)
+	end
+	-- Spur from the Wayfarer's Rest through the mine gate toward the ring.
+	road(Vector3.new(0, Overworld.GROUND_TOP, 170), Vector3.new(0, Overworld.GROUND_TOP, 236), 9)
 end
 
 local function tuneSky()
@@ -4712,7 +5019,8 @@ function Overworld.build(parent: Instance)
 	buildMountain(parent)
 	buildMineEntrance(parent)
 	buildWandererSpawn(parent)
-	buildTrees(parent)
+	buildFlora(parent)
+	buildRoads(parent)
 	tuneSky()
 end
 
@@ -5193,7 +5501,7 @@ local function render()
 		end, {
 			textSize = 13,
 			color = if affordable then UiKit.Colors.gold else UiKit.Colors.panel,
-			textColor = if affordable then UiKit.Colors.ink else UiKit.Colors.textDim,
+			textColor = if affordable then UiKit.Colors.panel else UiKit.Colors.textDim,
 		})
 	end
 end
@@ -5367,7 +5675,7 @@ local function renderTalents()
 			task.spawn(function()
 				Net.remoteFunction("EquipTalent"):InvokeServer({ ids = newList })
 			end)
-		end, { textSize = 12, color = if equipped then UiKit.Colors.gold else UiKit.Colors.panelLight, textColor = if equipped then UiKit.Colors.ink else UiKit.Colors.text })
+		end, { textSize = 12, color = if equipped then UiKit.Colors.gold else UiKit.Colors.panelLight, textColor = if equipped then UiKit.Colors.panel else UiKit.Colors.text })
 	end
 end
 
@@ -5417,12 +5725,12 @@ function DestinyController.Init()
 
 	raceSpinButton = UiKit.button(body, "SPIN RACE", UDim2.fromOffset(370, 44), UDim2.fromOffset(0, 0), function()
 		spin("race")
-	end, { color = UiKit.Colors.gold, textColor = UiKit.Colors.ink, textSize = 16 })
+	end, { color = UiKit.Colors.gold, textColor = UiKit.Colors.panel, textSize = 16 })
 	talentSpinButton = UiKit.button(body, "SPIN TALENT", UDim2.fromOffset(370, 44), UDim2.new(1, -370, 0, 0), function()
 		spin("talent")
 	end, { color = UiKit.Colors.panelLight, textSize = 16 })
 
-	local revealFrame = UiKit.frame(body, UDim2.new(1, 0, 0, 66), UDim2.fromOffset(0, 52), UiKit.Colors.ink)
+	local revealFrame = UiKit.frame(body, UDim2.new(1, 0, 0, 66), UDim2.fromOffset(0, 52), UiKit.Colors.inset)
 	revealLabel = UiKit.label(revealFrame, "Spin to awaken a bloodline of the old myths, or a talent of the flesh.", UDim2.new(1, -20, 1, -8), UDim2.fromOffset(10, 4), {
 		textSize = 15,
 		xalign = Enum.TextXAlignment.Center,
@@ -5553,13 +5861,13 @@ function DialogueController.Init()
 		task.spawn(function()
 			Net.remoteFunction("MissionAction"):InvokeServer({ action = "accept" })
 		end)
-	end, { color = UiKit.Colors.gold, textColor = UiKit.Colors.ink })
+	end, { color = UiKit.Colors.gold, textColor = UiKit.Colors.panel })
 
 	turnInButton = UiKit.button(body, "Turn In Ore", UDim2.new(0.5, -6, 0, 38), UDim2.new(0.5, 6, 1, -42), function()
 		task.spawn(function()
 			Net.remoteFunction("MissionAction"):InvokeServer({ action = "turnin" })
 		end)
-	end, { color = UiKit.Colors.health, textColor = UiKit.Colors.ink })
+	end, { color = UiKit.Colors.health, textColor = UiKit.Colors.panel })
 
 	Net.remoteEvent("DwarfDialogue").OnClientEvent:Connect(onDialogue)
 end
@@ -5714,6 +6022,8 @@ function HudController.Init()
 		title = true,
 		xalign = Enum.TextXAlignment.Center,
 	})
+	meditateLabel.TextStrokeColor3 = UiKit.Colors.panel
+	meditateLabel.TextStrokeTransparency = 0.3
 	meditateLabel.Visible = false
 
 	-- Hotbar.
@@ -5902,7 +6212,7 @@ local function render()
 				task.spawn(function()
 					Net.remoteFunction("EquipItem"):InvokeServer({ slot = slot, id = nil })
 				end)
-			end, { textSize = 12, color = UiKit.Colors.gold, textColor = UiKit.Colors.ink })
+			end, { textSize = 12, color = UiKit.Colors.gold, textColor = UiKit.Colors.panel })
 		else
 			UiKit.button(row, "Equip", UDim2.fromOffset(80, 28), UDim2.new(1, -86, 0.5, -14), function()
 				task.spawn(function()
@@ -6064,11 +6374,12 @@ function MenuController.Init()
 	blur.Size = 18
 	blur.Parent = Lighting
 
-	-- Dark wash over the whole viewport.
+	-- Paper mist over the whole viewport: with the blur behind it, the world
+	-- reads like an unfinished ink painting.
 	local wash = Instance.new("Frame")
 	wash.Size = UDim2.fromScale(1, 1)
-	wash.BackgroundColor3 = UiKit.Colors.ink
-	wash.BackgroundTransparency = 0.25
+	wash.BackgroundColor3 = UiKit.Colors.panel
+	wash.BackgroundTransparency = 0.2
 	wash.BorderSizePixel = 0
 	wash.Parent = screen
 
@@ -6089,7 +6400,7 @@ function MenuController.Init()
 	})
 
 	-- Sub-panels: settings and controls swap into this region.
-	local subPanel = UiKit.frame(panel, UDim2.new(1, -40, 0, 150), UDim2.fromOffset(20, 250), UiKit.Colors.ink)
+	local subPanel = UiKit.frame(panel, UDim2.new(1, -40, 0, 150), UDim2.fromOffset(20, 250), UiKit.Colors.inset)
 	subPanel.Visible = false
 	local subMode = ""
 
@@ -6125,7 +6436,7 @@ function MenuController.Init()
 					local on = ClientSettings.get(entry.key)
 					toggle.Text = if on then "ON" else "OFF"
 					toggle.BackgroundColor3 = if on then UiKit.Colors.gold else UiKit.Colors.panelLight
-					toggle.TextColor3 = if on then UiKit.Colors.ink else UiKit.Colors.text
+					toggle.TextColor3 = if on then UiKit.Colors.panel else UiKit.Colors.text
 				end
 				toggle = UiKit.button(subPanel, "ON", UDim2.fromOffset(84, 32), UDim2.new(1, -100, 0, y), function()
 					ClientSettings.set(entry.key, not ClientSettings.get(entry.key))
@@ -6139,7 +6450,7 @@ function MenuController.Init()
 	UiKit.button(panel, "Enter the World", UDim2.new(1, -80, 0, 46), UDim2.fromOffset(40, 122), function()
 		showSub("")
 		setOpen(false)
-	end, { color = UiKit.Colors.gold, textColor = UiKit.Colors.ink, textSize = 18 })
+	end, { color = UiKit.Colors.gold, textColor = UiKit.Colors.panel, textSize = 18 })
 
 	UiKit.button(panel, "Settings", UDim2.new(0.5, -50, 0, 38), UDim2.fromOffset(40, 180), function()
 		showSub("settings")
@@ -6520,7 +6831,7 @@ local function renderForms()
 			selForm = formId
 			renderForms()
 			renderPreview()
-		end, { color = if selected then UiKit.Colors.gold else UiKit.Colors.panelLight, textColor = if selected then UiKit.Colors.ink else UiKit.Colors.text })
+		end, { color = if selected then UiKit.Colors.gold else UiKit.Colors.panelLight, textColor = if selected then UiKit.Colors.panel else UiKit.Colors.text })
 		button.LayoutOrder = 1
 	end
 end
@@ -6546,7 +6857,7 @@ local function renderElements()
 			end
 		end, {
 			color = if selected then UiKit.Colors.gold else UiKit.Colors.panelLight,
-			textColor = if not allowed then UiKit.Colors.textDim elseif selected then UiKit.Colors.ink else element.color,
+			textColor = if not allowed then UiKit.Colors.textDim elseif selected then UiKit.Colors.panel else element.color,
 			textSize = 13,
 		})
 		button.LayoutOrder = 1
@@ -6649,7 +6960,7 @@ function TechniqueForgeController.Init()
 				nameBox.Text = ""
 			end
 		end)
-	end, { color = UiKit.Colors.gold, textColor = UiKit.Colors.ink, textSize = 15 })
+	end, { color = UiKit.Colors.gold, textColor = UiKit.Colors.panel, textSize = 15 })
 
 	previewLabel = UiKit.label(body, "", UDim2.fromOffset(230, 120), UDim2.fromOffset(224, 416), {
 		textSize = 12,
@@ -6833,35 +7144,37 @@ return ClientState
               <string name="Name">UiKit</string>
               <string name="Source"><![CDATA[--!strict
 -- ModuleScript: StarterPlayer > StarterPlayerScripts > Client > Modules > UiKit
--- Small UI construction kit shared by every controller: one dark ink-and-
--- gold theme, one way to make a window, a button, a bar. Controllers build
--- layouts; UiKit owns look and feel.
+-- Small UI construction kit shared by every controller. One theme: black
+-- ink on paper, the look of a Chinese manhwa page. Panels are paper,
+-- chrome is ink, and color appears only where it carries meaning
+-- (elements, rarities, danger).
 
 local Players = game:GetService("Players")
 
 local UiKit = {}
 
 UiKit.Colors = {
-	ink = Color3.fromRGB(18, 16, 22),
-	panel = Color3.fromRGB(28, 25, 34),
-	panelLight = Color3.fromRGB(42, 38, 50),
-	stroke = Color3.fromRGB(90, 80, 60),
-	gold = Color3.fromRGB(212, 175, 55),
-	text = Color3.fromRGB(235, 230, 215),
-	textDim = Color3.fromRGB(160, 155, 145),
-	qi = Color3.fromRGB(90, 200, 255),
-	xp = Color3.fromRGB(212, 175, 55),
-	health = Color3.fromRGB(120, 220, 120),
-	danger = Color3.fromRGB(220, 90, 80),
+	ink = Color3.fromRGB(27, 24, 21), -- the black: text, borders, fills
+	panel = Color3.fromRGB(246, 243, 233), -- paper: windows, panels
+	panelLight = Color3.fromRGB(255, 255, 253), -- raised paper: buttons
+	inset = Color3.fromRGB(234, 228, 212), -- recessed paper: lists, inputs
+	stroke = Color3.fromRGB(27, 24, 21),
+	gold = Color3.fromRGB(27, 24, 21), -- accent = ink in the manhwa theme
+	text = Color3.fromRGB(27, 24, 21),
+	textDim = Color3.fromRGB(88, 82, 72),
+	qi = Color3.fromRGB(35, 32, 28), -- bar fills stay monochrome
+	xp = Color3.fromRGB(107, 101, 90),
+	health = Color3.fromRGB(68, 64, 58),
+	danger = Color3.fromRGB(163, 46, 36), -- the one color: seal red
 }
 
 UiKit.RarityColors = {
-	common = Color3.fromRGB(180, 180, 180),
-	uncommon = Color3.fromRGB(110, 220, 130),
-	rare = Color3.fromRGB(90, 160, 255),
-	epic = Color3.fromRGB(190, 110, 255),
-	legendary = Color3.fromRGB(255, 170, 60),
-	mythic = Color3.fromRGB(255, 90, 90),
+	common = Color3.fromRGB(120, 114, 104),
+	uncommon = Color3.fromRGB(70, 130, 90),
+	rare = Color3.fromRGB(60, 100, 160),
+	epic = Color3.fromRGB(120, 70, 160),
+	legendary = Color3.fromRGB(180, 110, 30),
+	mythic = Color3.fromRGB(163, 46, 36),
 }
 
 local TITLE_FONT = Enum.Font.Garamond
@@ -6881,15 +7194,15 @@ end
 
 local function rounded(instance: GuiObject, radius: number?)
 	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, radius or 8)
+	corner.CornerRadius = UDim.new(0, radius or 4)
 	corner.Parent = instance
 end
 
 local function stroked(instance: GuiObject, color: Color3?, thickness: number?)
 	local stroke = Instance.new("UIStroke")
 	stroke.Color = color or UiKit.Colors.stroke
-	stroke.Thickness = thickness or 1
-	stroke.Transparency = 0.25
+	stroke.Thickness = thickness or 1.6
+	stroke.Transparency = 0
 	stroke.Parent = instance
 end
 
@@ -6948,7 +7261,7 @@ function UiKit.textBox(parent: Instance, placeholder: string, size: UDim2, posit
 	local box = Instance.new("TextBox")
 	box.Size = size
 	box.Position = position
-	box.BackgroundColor3 = UiKit.Colors.ink
+	box.BackgroundColor3 = UiKit.Colors.panelLight
 	box.BorderSizePixel = 0
 	box.PlaceholderText = placeholder
 	box.PlaceholderColor3 = UiKit.Colors.textDim
@@ -6958,7 +7271,7 @@ function UiKit.textBox(parent: Instance, placeholder: string, size: UDim2, posit
 	box.Font = BODY_FONT
 	box.ClearTextOnFocus = false
 	box.Parent = parent
-	rounded(box, 6)
+	rounded(box, 4)
 	stroked(box)
 	return box
 end
@@ -6967,13 +7280,14 @@ function UiKit.scroll(parent: Instance, size: UDim2, position: UDim2): (Scrollin
 	local scroll = Instance.new("ScrollingFrame")
 	scroll.Size = size
 	scroll.Position = position
-	scroll.BackgroundColor3 = UiKit.Colors.ink
+	scroll.BackgroundColor3 = UiKit.Colors.inset
 	scroll.BorderSizePixel = 0
 	scroll.ScrollBarThickness = 6
+	scroll.ScrollBarImageColor3 = UiKit.Colors.ink
 	scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
 	scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
 	scroll.Parent = parent
-	rounded(scroll, 6)
+	rounded(scroll, 4)
 	local layout = Instance.new("UIListLayout")
 	layout.Padding = UDim.new(0, 4)
 	layout.SortOrder = Enum.SortOrder.LayoutOrder
@@ -6990,7 +7304,7 @@ end
 export type Bar = { frame: Frame, fill: Frame, label: TextLabel, set: (fraction: number, text: string) -> () }
 
 function UiKit.bar(parent: Instance, size: UDim2, position: UDim2, fillColor: Color3): Bar
-	local frame = UiKit.frame(parent, size, position, UiKit.Colors.ink)
+	local frame = UiKit.frame(parent, size, position, UiKit.Colors.inset)
 	stroked(frame)
 	local fill = Instance.new("Frame")
 	fill.Size = UDim2.fromScale(1, 1)
@@ -6998,11 +7312,15 @@ function UiKit.bar(parent: Instance, size: UDim2, position: UDim2, fillColor: Co
 	fill.BorderSizePixel = 0
 	fill.Parent = frame
 	rounded(fill)
+	-- Outlined text stays legible over both the ink fill and the paper gap.
 	local label = UiKit.label(frame, "", UDim2.fromScale(1, 1), UDim2.fromScale(0, 0), {
 		textSize = 12,
 		xalign = Enum.TextXAlignment.Center,
 		bold = true,
+		color = UiKit.Colors.panel,
 	})
+	label.TextStrokeColor3 = UiKit.Colors.ink
+	label.TextStrokeTransparency = 0
 	label.ZIndex = 3
 	local bar: Bar
 	bar = {
@@ -7017,7 +7335,7 @@ function UiKit.bar(parent: Instance, size: UDim2, position: UDim2, fillColor: Co
 	return bar
 end
 
--- A draggable-feeling centered window with a title bar and close button.
+-- A centered window: paper body, ink title bar, brush-serif title.
 export type Window = { screen: ScreenGui, root: Frame, body: Frame, setVisible: (visible: boolean) -> (), toggle: () -> (), visible: () -> boolean }
 
 function UiKit.window(name: string, title: string, size: UDim2, displayOrder: number): Window
@@ -7026,12 +7344,12 @@ function UiKit.window(name: string, title: string, size: UDim2, displayOrder: nu
 
 	local root = UiKit.frame(screen, size, UDim2.new(0.5, 0, 0.5, 0))
 	root.AnchorPoint = Vector2.new(0.5, 0.5)
-	stroked(root, UiKit.Colors.gold, 1)
+	stroked(root, UiKit.Colors.ink, 2)
 
 	local titleBar = UiKit.frame(root, UDim2.new(1, 0, 0, 34), UDim2.fromOffset(0, 0), UiKit.Colors.ink)
 	UiKit.label(titleBar, title, UDim2.new(1, -50, 1, 0), UDim2.fromOffset(12, 0), {
-		textSize = 20,
-		color = UiKit.Colors.gold,
+		textSize = 21,
+		color = UiKit.Colors.panel,
 		title = true,
 	})
 
@@ -7041,7 +7359,7 @@ function UiKit.window(name: string, title: string, size: UDim2, displayOrder: nu
 	end
 	UiKit.button(titleBar, "X", UDim2.fromOffset(26, 26), UDim2.new(1, -30, 0, 4), function()
 		setVisible(false)
-	end, { color = UiKit.Colors.panel })
+	end, { color = UiKit.Colors.ink, textColor = UiKit.Colors.panel })
 
 	local body = Instance.new("Frame")
 	body.Size = UDim2.new(1, -16, 1, -46)

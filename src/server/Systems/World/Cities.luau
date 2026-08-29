@@ -21,6 +21,16 @@ local WALL_HEIGHT = 20
 local WALL_THICKNESS = 4
 local GATE_WIDTH = 30
 
+local PLASTER = Color3.fromRGB(238, 231, 214)
+local TIMBER = Color3.fromRGB(74, 53, 39)
+
+-- Dark tiled roofs, tinted per path so each city reads at a glance.
+local ROOF_COLORS: { [string]: Color3 } = {
+	orthodox = Color3.fromRGB(58, 74, 92),
+	unorthodox = Color3.fromRGB(52, 73, 59),
+	demonic = Color3.fromRGB(38, 30, 32),
+}
+
 type CitySpec = {
 	pathId: string,
 	angle: number, -- degrees around the mountain, 0 = +Z (south)
@@ -46,6 +56,7 @@ local function buildCity(parent: Instance, spec: CitySpec)
 
 	local stone = path.primaryColor
 	local accent = path.accentColor
+	local roofColor = ROOF_COLORS[spec.pathId] or Color3.fromRGB(45, 42, 44)
 	local half = PLAZA / 2
 
 	-- Plaza floor.
@@ -79,27 +90,29 @@ local function buildCity(parent: Instance, spec: CitySpec)
 	BuildKit.wallZ(city, "Wall_E", east, north, south, 0, WALL_HEIGHT, WALL_THICKNESS, stone, Enum.Material.Slate,
 		if gateEast then center.Z else nil, if gateEast then GATE_WIDTH else nil)
 
-	-- Gate sign floating over the opening.
+	-- Tiled coping caps the walls, with the same gate gaps.
+	BuildKit.wallX(city, "Coping_N", north, west - 1, east + 1, WALL_HEIGHT, 1.4, WALL_THICKNESS + 3, roofColor, Enum.Material.Slate,
+		if gateNorth then center.X else nil, if gateNorth then GATE_WIDTH else nil)
+	BuildKit.wallX(city, "Coping_S", south, west - 1, east + 1, WALL_HEIGHT, 1.4, WALL_THICKNESS + 3, roofColor, Enum.Material.Slate,
+		if gateSouth then center.X else nil, if gateSouth then GATE_WIDTH else nil)
+	BuildKit.wallZ(city, "Coping_W", west, north - 1, south + 1, WALL_HEIGHT, 1.4, WALL_THICKNESS + 3, roofColor, Enum.Material.Slate,
+		if gateWest then center.Z else nil, if gateWest then GATE_WIDTH else nil)
+	BuildKit.wallZ(city, "Coping_E", east, north - 1, south + 1, WALL_HEIGHT, 1.4, WALL_THICKNESS + 3, roofColor, Enum.Material.Slate,
+		if gateEast then center.Z else nil, if gateEast then GATE_WIDTH else nil)
+
+	-- Paifang arch standing just outside the gate opening.
 	local gateWallPos: Vector3
 	if gateNorth then
-		gateWallPos = Vector3.new(center.X, WALL_HEIGHT + 4, north)
+		gateWallPos = Vector3.new(center.X, 0, north)
 	elseif gateSouth then
-		gateWallPos = Vector3.new(center.X, WALL_HEIGHT + 4, south)
+		gateWallPos = Vector3.new(center.X, 0, south)
 	elseif gateWest then
-		gateWallPos = Vector3.new(west, WALL_HEIGHT + 4, center.Z)
+		gateWallPos = Vector3.new(west, 0, center.Z)
 	else
-		gateWallPos = Vector3.new(east, WALL_HEIGHT + 4, center.Z)
+		gateWallPos = Vector3.new(east, 0, center.Z)
 	end
-	local signPost = BuildKit.part({
-		name = "GateSign",
-		size = Vector3.new(2, 2, 2),
-		position = gateWallPos,
-		color = accent,
-		material = Enum.Material.Neon,
-		canCollide = false,
-		parent = city,
-	})
-	BuildKit.billboard(signPost, `{path.cityName}\n{path.name}`, accent, 18, 3, Vector3.new(0, 3, 0))
+	local sign = BuildKit.paifang(city, gateWallPos + gateDir * 12, gateDir, GATE_WIDTH + 6, TIMBER, roofColor)
+	BuildKit.billboard(sign, `{path.cityName}\n{path.name}`, accent, 18, 3, Vector3.new(0, 4, 0))
 
 	-- Pledge shrine at the back of the plaza (opposite the gate).
 	local shrinePos = center - gateDir * (half * 0.55)
@@ -117,11 +130,12 @@ local function buildCity(parent: Instance, spec: CitySpec)
 	BuildKit.prompt(monolith, "Pledge", path.name, 2, nil)
 	BuildKit.billboard(monolith, `Shrine of the {path.name}\n"{path.blurb}"`, accent, 22, 3.4, Vector3.new(0, 9, 0))
 	BuildKit.pointLight(dais, accent, 2, 30)
+	BuildKit.pavilion(city, shrinePos, 18, TIMBER, roofColor)
 
 	-- Team spawn beside the shrine.
 	BuildKit.spawnLocation(city, shrinePos + gateDir * 18 + Vector3.new(0, 1, 0), path.teamBrickColor, false)
 
-	-- Homes in the four plaza corners.
+	-- Pagoda homes in the plaza corners: two-story, tiled, timber-framed.
 	for cx = -1, 1, 2 do
 		for cz = -1, 1, 2 do
 			local homeCenter = center + Vector3.new(cx * half * 0.6, 0, cz * half * 0.6)
@@ -129,46 +143,34 @@ local function buildCity(parent: Instance, spec: CitySpec)
 			if (homeCenter - shrinePos).Magnitude < 30 then
 				continue
 			end
-			BuildKit.part({
-				name = "Home",
-				size = Vector3.new(24, 12, 20),
-				position = homeCenter + Vector3.new(0, 6, 0),
-				color = stone,
-				material = Enum.Material.WoodPlanks,
-				parent = city,
-			})
-			BuildKit.part({
-				name = "Home_Roof",
-				size = Vector3.new(30, 2, 26),
-				position = homeCenter + Vector3.new(0, 13, 0),
-				color = accent,
-				material = Enum.Material.Slate,
-				parent = city,
-			})
+			BuildKit.pagodaHouse(city, homeCenter, 24, 20, 2, PLASTER, TIMBER, roofColor)
 		end
 	end
+	-- One taller tower opposite the shrine: the sect hall.
+	BuildKit.pagodaHouse(city, center + gateDir * (half * 0.28) + Vector3.new(0, 0, 0), 20, 20, 3, PLASTER, TIMBER, roofColor)
 
-	-- Lantern posts at the plaza corners.
+	-- Red lanterns at the plaza corners; every Chinese city street has them.
+	local lanternRed = Color3.fromRGB(210, 60, 45)
 	for cx = -1, 1, 2 do
 		for cz = -1, 1, 2 do
 			local post = BuildKit.part({
 				name = "Lantern",
 				size = Vector3.new(1, 11, 1),
 				position = center + Vector3.new(cx * (half - 8), 5.5, cz * (half - 8)),
-				color = Color3.fromRGB(60, 50, 45),
+				color = TIMBER,
 				material = Enum.Material.Wood,
 				parent = city,
 			})
 			local lamp = BuildKit.part({
 				name = "Lantern_Light",
-				size = Vector3.new(2, 2.6, 2),
+				size = Vector3.new(2.2, 2.8, 2.2),
 				position = post.Position + Vector3.new(0, 6.5, 0),
-				color = accent,
+				color = lanternRed,
 				material = Enum.Material.Neon,
 				canCollide = false,
 				parent = city,
 			})
-			BuildKit.pointLight(lamp, accent, 1.6, 26)
+			BuildKit.pointLight(lamp, Color3.fromRGB(255, 150, 110), 1.6, 26)
 		end
 	end
 

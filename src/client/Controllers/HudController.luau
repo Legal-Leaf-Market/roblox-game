@@ -141,6 +141,8 @@ function HudController.Init()
 		title = true,
 		xalign = Enum.TextXAlignment.Center,
 	})
+	meditateLabel.TextStrokeColor3 = UiKit.Colors.panel
+	meditateLabel.TextStrokeTransparency = 0.3
 	meditateLabel.Visible = false
 
 	-- Hotbar.

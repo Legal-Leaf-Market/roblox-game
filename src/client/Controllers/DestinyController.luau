@@ -145,7 +145,7 @@ local function renderTalents()
 			task.spawn(function()
 				Net.remoteFunction("EquipTalent"):InvokeServer({ ids = newList })
 			end)
-		end, { textSize = 12, color = if equipped then UiKit.Colors.gold else UiKit.Colors.panelLight, textColor = if equipped then UiKit.Colors.ink else UiKit.Colors.text })
+		end, { textSize = 12, color = if equipped then UiKit.Colors.gold else UiKit.Colors.panelLight, textColor = if equipped then UiKit.Colors.panel else UiKit.Colors.text })
 	end
 end
 
@@ -195,12 +195,12 @@ function DestinyController.Init()
 
 	raceSpinButton = UiKit.button(body, "SPIN RACE", UDim2.fromOffset(370, 44), UDim2.fromOffset(0, 0), function()
 		spin("race")
-	end, { color = UiKit.Colors.gold, textColor = UiKit.Colors.ink, textSize = 16 })
+	end, { color = UiKit.Colors.gold, textColor = UiKit.Colors.panel, textSize = 16 })
 	talentSpinButton = UiKit.button(body, "SPIN TALENT", UDim2.fromOffset(370, 44), UDim2.new(1, -370, 0, 0), function()
 		spin("talent")
 	end, { color = UiKit.Colors.panelLight, textSize = 16 })
 
-	local revealFrame = UiKit.frame(body, UDim2.new(1, 0, 0, 66), UDim2.fromOffset(0, 52), UiKit.Colors.ink)
+	local revealFrame = UiKit.frame(body, UDim2.new(1, 0, 0, 66), UDim2.fromOffset(0, 52), UiKit.Colors.inset)
 	revealLabel = UiKit.label(revealFrame, "Spin to awaken a bloodline of the old myths, or a talent of the flesh.", UDim2.new(1, -20, 1, -8), UDim2.fromOffset(10, 4), {
 		textSize = 15,
 		xalign = Enum.TextXAlignment.Center,

@@ -94,7 +94,7 @@ local function renderForms()
 			selForm = formId
 			renderForms()
 			renderPreview()
-		end, { color = if selected then UiKit.Colors.gold else UiKit.Colors.panelLight, textColor = if selected then UiKit.Colors.ink else UiKit.Colors.text })
+		end, { color = if selected then UiKit.Colors.gold else UiKit.Colors.panelLight, textColor = if selected then UiKit.Colors.panel else UiKit.Colors.text })
 		button.LayoutOrder = 1
 	end
 end
@@ -120,7 +120,7 @@ local function renderElements()
 			end
 		end, {
 			color = if selected then UiKit.Colors.gold else UiKit.Colors.panelLight,
-			textColor = if not allowed then UiKit.Colors.textDim elseif selected then UiKit.Colors.ink else element.color,
+			textColor = if not allowed then UiKit.Colors.textDim elseif selected then UiKit.Colors.panel else element.color,
 			textSize = 13,
 		})
 		button.LayoutOrder = 1
@@ -223,7 +223,7 @@ function TechniqueForgeController.Init()
 				nameBox.Text = ""
 			end
 		end)
-	end, { color = UiKit.Colors.gold, textColor = UiKit.Colors.ink, textSize = 15 })
+	end, { color = UiKit.Colors.gold, textColor = UiKit.Colors.panel, textSize = 15 })
 
 	previewLabel = UiKit.label(body, "", UDim2.fromOffset(230, 120), UDim2.fromOffset(224, 416), {
 		textSize = 12,

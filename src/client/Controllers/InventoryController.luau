@@ -108,7 +108,7 @@ local function render()
 				task.spawn(function()
 					Net.remoteFunction("EquipItem"):InvokeServer({ slot = slot, id = nil })
 				end)
-			end, { textSize = 12, color = UiKit.Colors.gold, textColor = UiKit.Colors.ink })
+			end, { textSize = 12, color = UiKit.Colors.gold, textColor = UiKit.Colors.panel })
 		else
 			UiKit.button(row, "Equip", UDim2.fromOffset(80, 28), UDim2.new(1, -86, 0.5, -14), function()
 				task.spawn(function()

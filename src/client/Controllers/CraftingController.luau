@@ -89,7 +89,7 @@ local function render()
 		end, {
 			textSize = 13,
 			color = if affordable then UiKit.Colors.gold else UiKit.Colors.panel,
-			textColor = if affordable then UiKit.Colors.ink else UiKit.Colors.textDim,
+			textColor = if affordable then UiKit.Colors.panel else UiKit.Colors.textDim,
 		})
 	end
 end
