@@ -13,6 +13,18 @@ export type UpdateEntry = {
 
 local Updates: { UpdateEntry } = {
 	{
+		version = "0.4.2",
+		date = "2026-08-29",
+		title = "Mountains Worthy of the Name",
+		notes = {
+			"Every peak rebuilt as layered stone pyramids: broad skirts, ridged shoulders, sharp summits. No more round gray domes.",
+			"Snow caps the northern peaks and sandstone crowns the desert ones.",
+			"The crater's outer wall is now a rock cliff ringed with jagged stone teeth instead of sheer grass.",
+			"The great waterfall cascades down the north face into its pool, step by step.",
+			"Pines grow as full cones, bamboo carries a real leafy crown, and hills roll gently instead of bulging.",
+		},
+	},
+	{
 		version = "0.4.1",
 		date = "2026-08-29",
 		title = "The World Grows Vast",

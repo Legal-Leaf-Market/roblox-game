@@ -47,23 +47,28 @@ local function pineTree(parent: Instance, position: Vector3, rng: Random, snowy:
 		material = Enum.Material.Wood,
 		parent = parent,
 	})
+	-- Thick overlapping tiers build a solid cone; the old 2-stud pancake
+	-- discs read as stacked umbrella tables from any distance.
 	local layers = rng:NextInteger(4, 5)
 	for layer = 1, layers do
 		local t = (layer - 1) / layers
 		local layerY = position.Y + height * (0.5 + 0.55 * t)
-		local diameter = (30 - t * 16) * rng:NextNumber(0.9, 1.15)
+		local diameter = (30 - t * 17) * rng:NextNumber(0.9, 1.15)
 		local color = if snowy and layer == layers
 			then SNOW_WHITE
 			elseif layer % 2 == 0 then PINE_DARK
 			else PINE_GREEN
-		BuildKit.cylinder(parent, "Pine_Canopy", Vector3.new(position.X, layerY, position.Z), 2.2, diameter,
+		BuildKit.cylinder(parent, "Pine_Canopy", Vector3.new(position.X, layerY, position.Z), height * 0.14, diameter,
 			color, if snowy and layer == layers then Enum.Material.Snow else Enum.Material.Grass)
 		if snowy and layer < layers then
 			-- Snow dusting on the lower boughs' rims.
-			BuildKit.cylinder(parent, "Pine_Snow", Vector3.new(position.X, layerY + 1.3, position.Z), 0.8, diameter * 0.8,
+			BuildKit.cylinder(parent, "Pine_Snow", Vector3.new(position.X, layerY + height * 0.075, position.Z), 1.2, diameter * 0.85,
 				SNOW_WHITE, Enum.Material.Snow)
 		end
 	end
+	-- A pointed tip finishes the cone.
+	BuildKit.cylinder(parent, "Pine_Tip", Vector3.new(position.X, position.Y + height * 1.08, position.Z), height * 0.12, 6.5,
+		if snowy then SNOW_WHITE else PINE_GREEN, if snowy then Enum.Material.Snow else Enum.Material.Grass)
 end
 
 local function blossomTree(parent: Instance, position: Vector3, rng: Random)
@@ -87,6 +92,8 @@ local function blossomTree(parent: Instance, position: Vector3, rng: Random)
 end
 
 local function bambooClump(parent: Instance, position: Vector3, rng: Random)
+	local LEAF = Color3.fromRGB(104, 146, 78)
+	local LEAF_LIGHT = Color3.fromRGB(126, 166, 92)
 	for _ = 1, rng:NextInteger(5, 8) do
 		local culmHeight = rng:NextNumber(50, 90)
 		local base = position + Vector3.new(rng:NextNumber(-7, 7), 0, rng:NextNumber(-7, 7))
@@ -98,7 +105,16 @@ local function bambooClump(parent: Instance, position: Vector3, rng: Random)
 			material = Enum.Material.SmoothPlastic,
 			parent = parent,
 		})
-		puff(parent, base + Vector3.new(0, culmHeight, 0), Vector3.new(8, 5, 8), Color3.fromRGB(110, 150, 82))
+		-- A real leafy crown, not one tiny nub on a bare pole: a big canopy
+		-- puff at the tip, a second offset lower, and a drooping side spray.
+		local top = base + Vector3.new(0, culmHeight, 0)
+		puff(parent, top, Vector3.new(rng:NextNumber(13, 18), rng:NextNumber(7, 10), rng:NextNumber(13, 18)), LEAF)
+		puff(parent,
+			top + Vector3.new(rng:NextNumber(-6, 6), -rng:NextNumber(5, 10), rng:NextNumber(-6, 6)),
+			Vector3.new(rng:NextNumber(9, 13), rng:NextNumber(5, 7), rng:NextNumber(9, 13)), LEAF_LIGHT)
+		puff(parent,
+			top + Vector3.new(rng:NextNumber(-9, 9), -rng:NextNumber(14, 24), rng:NextNumber(-9, 9)),
+			Vector3.new(rng:NextNumber(6, 9), rng:NextNumber(3, 5), rng:NextNumber(6, 9)), LEAF)
 	end
 end
 

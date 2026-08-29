@@ -114,15 +114,18 @@ local function buildRelief(rng: Random)
 				)
 			end
 		elseif biome == "snow" and rng:NextNumber() < 0.35 then
-			-- Glacier shelf.
-			fillBall(Vector3.new(x, rng:NextNumber(4, 18), z), rng:NextNumber(55, 120), Enum.Material.Glacier)
+			-- Glacier shelf, mostly buried so it reads as a low ice sheet.
+			local radius = rng:NextNumber(55, 120)
+			fillBall(Vector3.new(x, rng:NextNumber(-radius * 0.5, -radius * 0.2), z), radius, Enum.Material.Glacier)
 		else
-			-- Rolling hill.
+			-- Rolling hill: a mostly-buried sphere, so only a gentle cap
+			-- shows. Centered near the surface they read as smooth domes.
 			local material = if biome == "snow"
 				then Enum.Material.Snow
 				elseif biome == "desert" then Enum.Material.Sand
 				else Enum.Material.Grass
-			fillBall(Vector3.new(x, rng:NextNumber(-8, 14), z), rng:NextNumber(40, 100), material)
+			local radius = rng:NextNumber(40, 100)
+			fillBall(Vector3.new(x, rng:NextNumber(-radius * 0.55, -radius * 0.2), z), radius, material)
 		end
 	end
 	-- LeafyGrass patches through the green realm.
@@ -148,66 +151,109 @@ local function fillPyramid(center: Vector3, baseWidth: number, height: number, y
 	end
 end
 
-local function buildPeak(rng: Random, base: Vector3, height: number, girth: number)
-	-- Grounded rock mass so the ridges rise out of something.
-	fillBall(Vector3.new(base.X, height * 0.16, base.Z), girth * 0.95, Enum.Material.Rock)
-	fillBall(
-		Vector3.new(base.X + rng:NextNumber(-girth * 0.25, girth * 0.25), height * 0.4, base.Z + rng:NextNumber(-girth * 0.25, girth * 0.25)),
-		girth * 0.6,
-		Enum.Material.Rock
-	)
+-- A mountain is pyramids all the way down: a broad skirt rising from the
+-- ground, offset mid pyramids for shoulders and ridgelines, and a steep
+-- summit cone. No spheres anywhere - a sphere is what made the old peaks
+-- read as balloons - and no thin shards, which read as fins.
+local function buildPeak(rng: Random, base: Vector3, height: number, girth: number, capMaterial: Enum.Material?)
+	local yaw = rng:NextNumber(0, math.pi)
 
-	-- Faceted shards: tall, slightly leaning wedges climbing the flanks.
-	for _ = 1, rng:NextInteger(4, 6) do
-		local yaw = rng:NextNumber(0, math.pi * 2)
-		local shardHeight = height * rng:NextNumber(0.5, 0.95)
-		local cf = CFrame.new(Vector3.new(
-			base.X + rng:NextNumber(-girth * 0.3, girth * 0.3),
-			shardHeight / 2,
-			base.Z + rng:NextNumber(-girth * 0.3, girth * 0.3)
-		)) * CFrame.Angles(0, yaw, 0) * CFrame.Angles(math.rad(rng:NextNumber(-7, 7)), 0, math.rad(rng:NextNumber(-7, 7)))
-		terrain:FillWedge(cf, Vector3.new(girth * rng:NextNumber(0.45, 0.8), shardHeight, girth * rng:NextNumber(0.35, 0.6)), Enum.Material.Slate)
+	-- Broad skirt: the whole footprint, meeting the ground at a walkable grade.
+	fillPyramid(Vector3.new(base.X, height * 0.28 - 8, base.Z), girth * 3, height * 0.56 + 16, yaw, Enum.Material.Rock)
+
+	-- Mid flanks: two offset, twisted pyramids break the cone into ridges.
+	for _ = 1, 2 do
+		fillPyramid(
+			Vector3.new(
+				base.X + rng:NextNumber(-girth * 0.35, girth * 0.35),
+				height * 0.5,
+				base.Z + rng:NextNumber(-girth * 0.35, girth * 0.35)
+			),
+			girth * rng:NextNumber(1.7, 2.1),
+			height * 0.62,
+			yaw + rng:NextNumber(0.4, 1.2),
+			Enum.Material.Rock
+		)
 	end
 
-	-- Pyramid spires carry the summit to a real point.
-	fillPyramid(Vector3.new(base.X, height * 0.62, base.Z), girth * 0.9, height * 0.75, rng:NextNumber(0, math.pi), Enum.Material.Slate)
-	if rng:NextNumber() < 0.6 then
+	-- Summit cone carries the silhouette to a real point.
+	fillPyramid(Vector3.new(base.X, height * 0.72, base.Z), girth * 1.15, height * 0.56, yaw + rng:NextNumber(0, 0.6), Enum.Material.Slate)
+	if capMaterial then
+		fillPyramid(Vector3.new(base.X, height * 0.86, base.Z), girth * 0.62, height * 0.3, yaw, capMaterial)
+	end
+
+	-- One foothill spur so the base meets the land unevenly.
+	local angle = rng:NextNumber(0, math.pi * 2)
+	fillPyramid(
+		Vector3.new(base.X + math.cos(angle) * girth * 1.3, height * 0.11, base.Z + math.sin(angle) * girth * 1.3),
+		girth * rng:NextNumber(1.2, 1.7),
+		height * 0.26,
+		rng:NextNumber(0, math.pi),
+		Enum.Material.Rock
+	)
+end
+
+local function buildMountains(rng: Random)
+	-- Rock cliff collar first, so the crater plateau's outer wall reads as a
+	-- stone cliff instead of a sheer wall of grass-textured hedge.
+	fillCylinder(Vector3.new(0, 18, 0), 44, Island.VALLEY_RADIUS + 84, Enum.Material.Rock)
+	-- Crater floor overwrites the collar's interior; grass caps the top.
+	fillCylinder(Vector3.new(0, Island.VALLEY_Y - 23, 0), 46, Island.VALLEY_RADIUS + 60, Enum.Material.Ground)
+	fillCylinder(Vector3.new(0, Island.VALLEY_Y - 1.25, 0), 2.5, Island.VALLEY_RADIUS + 30, Enum.Material.Grass)
+
+	-- Jagged rock teeth along the rim so its edge is not a perfect circle.
+	for index = 1, 20 do
+		local theta = -180 + (index - 0.5) * 18
+		if math.abs(180 - math.abs(theta)) < Island.GAP_HALF_ANGLE + 8 then
+			continue -- keep the southern pass and its stair clear
+		end
+		local radius = Island.VALLEY_RADIUS + rng:NextNumber(30, 80)
 		fillPyramid(
-			Vector3.new(base.X + rng:NextNumber(-girth * 0.4, girth * 0.4), height * 0.45, base.Z + rng:NextNumber(-girth * 0.4, girth * 0.4)),
-			girth * 0.6,
-			height * 0.5,
+			Vector3.new(math.sin(math.rad(theta)) * radius, rng:NextNumber(22, 34), -math.cos(math.rad(theta)) * radius),
+			rng:NextNumber(70, 120),
+			rng:NextNumber(48, 78),
 			rng:NextNumber(0, math.pi),
 			Enum.Material.Rock
 		)
 	end
-end
 
-local function buildMountains(rng: Random)
-	-- Crater floor first, so peaks bury its rim.
-	fillCylinder(Vector3.new(0, Island.VALLEY_Y - 23, 0), 46, Island.VALLEY_RADIUS + 60, Enum.Material.Ground)
-	fillCylinder(Vector3.new(0, Island.VALLEY_Y - 1.25, 0), 2.5, Island.VALLEY_RADIUS + 30, Enum.Material.Grass)
-
-	-- The ring: peaks all around except the southern gap.
+	-- The ring: peaks all around except the southern gap. Caps follow the
+	-- biome: snow to the north, sandstone over the desert.
 	local peakCount = 17
 	for index = 1, peakCount do
 		local theta = -180 + (index - 0.5) * (360 / peakCount)
-		if math.abs(180 - math.abs(theta)) < Island.GAP_HALF_ANGLE then
+		if math.abs(180 - math.abs(theta)) < Island.GAP_HALF_ANGLE + 8 then
 			continue -- the southern pass stays open
 		end
 		local ringRadius = rng:NextNumber(780, 980)
 		local x = math.sin(math.rad(theta)) * ringRadius
 		local z = -math.cos(math.rad(theta)) * ringRadius
-		buildPeak(rng, Vector3.new(x, 0, z), rng:NextNumber(370, 690), rng:NextNumber(145, 215))
+		local biome = Island.biomeAt(x, z)
+		local cap = if biome == "snow" then Enum.Material.Snow
+			elseif biome == "desert" then Enum.Material.Sandstone
+			else nil
+		buildPeak(rng, Vector3.new(x, 0, z), rng:NextNumber(370, 690), rng:NextNumber(145, 215), cap)
 	end
 
 	-- The great north peak: tallest, flattened summit for the dark pagoda.
-	buildPeak(rng, Island.NORTH_PEAK, 745, 225)
+	buildPeak(rng, Island.NORTH_PEAK, 745, 225, Enum.Material.Snow)
 	fillCylinder(Vector3.new(Island.NORTH_PEAK.X, Island.NORTH_PEAK_TOP - 4, Island.NORTH_PEAK.Z), 8, 80, Enum.Material.Slate)
 	-- Shave anything the spires push above the pagoda platform.
 	fillBlock(Vector3.new(Island.NORTH_PEAK.X, Island.NORTH_PEAK_TOP + 45, Island.NORTH_PEAK.Z), Vector3.new(150, 90, 150), Enum.Material.Air)
 
-	-- Waterfall: a sheet of water down the peak's inner face into a pool.
-	fillBlock(Vector3.new(0, (Island.NORTH_PEAK_TOP + Island.VALLEY_Y) / 2, -585), Vector3.new(46, Island.NORTH_PEAK_TOP - Island.VALLEY_Y, 8), Enum.Material.Water)
+	-- Waterfall: a cascade stepping down the peak's inner face. The old
+	-- version was one 680-stud vertical sheet, which stood in the sky like a
+	-- blue plank; this one hugs the slope of the new pyramid flanks.
+	for step = 0, 9 do
+		local t = step / 9
+		fillBlock(
+			Vector3.new(0, 540 - t * 496, -755 + t * 240),
+			Vector3.new(42, 56, 40),
+			Enum.Material.Water
+		)
+	end
+	-- Run-out stream across the crater floor into the pool.
+	fillBlock(Vector3.new(0, Island.VALLEY_Y - 1.5, -480), Vector3.new(36, 5, 110), Enum.Material.Water)
 	fillCylinder(Vector3.new(0, Island.VALLEY_Y - 2, -448), 5, 52, Enum.Material.Water)
 end
 
