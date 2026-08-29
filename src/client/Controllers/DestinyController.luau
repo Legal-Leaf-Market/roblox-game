@@ -193,6 +193,10 @@ end
 function DestinyController.Init()
 	window = UiKit.window("Destiny", "Destiny", UDim2.fromOffset(780, 560), 40)
 	Panels.register("destiny", window.toggle)
+	-- Direct open (never toggle-off), for the main menu's DESTINY action.
+	Panels.register("destiny:open", function()
+		window.setVisible(true)
+	end)
 	local body = window.body
 
 	raceSpinButton = UiKit.button(body, "SPIN RACE", UDim2.fromOffset(370, 44), UDim2.fromOffset(0, 0), function()

@@ -172,6 +172,10 @@ function HudController.Init()
 	-- Respect Roblox's topbar so the medallion and identity line don't
 	-- slide under the platform's own buttons.
 	screen.IgnoreGuiInset = false
+	-- Let the main menu hide the HUD while it owns the screen.
+	Panels.registerHud(function(visible: boolean)
+		screen.Enabled = visible
+	end)
 
 	-- ------------------------ Top-right identity -----------------------
 	-- Realm medallion: a brush circle holding the realm number, pinned to

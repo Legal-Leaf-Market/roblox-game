@@ -79,6 +79,8 @@ end
 
 local function setOpen(open: boolean)
 	screen.Enabled = open
+	-- The menu owns the whole screen; the HUD waits its turn.
+	Panels.setHudVisible(not open)
 	if open then
 		startOrbit()
 	else
@@ -194,8 +196,9 @@ function MenuController.Init()
 		setOpen(false)
 	end)
 	menuAction(bottomBar, "DESTINY", "TALENT  ·  RACE", 0, function()
+		-- Straight into the spin panel: enter the world with Destiny open.
 		setOpen(false)
-		task.defer(Panels.toggle, "destiny")
+		task.defer(Panels.toggle, "destiny:open")
 	end)
 	menuAction(bottomBar, "SETTINGS", "OPTIONS  ·  CONTROLS", 290, function()
 		settingsPanel.Visible = not settingsPanel.Visible
@@ -245,7 +248,8 @@ function MenuController.Init()
 		end
 	end)
 
-	-- The menu opens on join: begin the cinematic immediately.
+	-- The menu opens on join: begin the cinematic with the HUD hidden.
+	Panels.setHudVisible(false)
 	startOrbit()
 end
 

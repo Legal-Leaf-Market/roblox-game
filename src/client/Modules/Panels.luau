@@ -19,4 +19,18 @@ function Panels.toggle(name: string)
 	end
 end
 
+-- The HUD registers a visibility setter so overlays (the main menu) can
+-- hide the whole HUD while they own the screen.
+local hudSetter: ((boolean) -> ())? = nil
+
+function Panels.registerHud(setter: (boolean) -> ())
+	hudSetter = setter
+end
+
+function Panels.setHudVisible(visible: boolean)
+	if hudSetter then
+		hudSetter(visible)
+	end
+end
+
 return Panels
