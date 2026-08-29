@@ -142,7 +142,7 @@ local function buildCity(parent: Instance, spec: CitySpec)
 	local gateAngle = math.atan2(toCenter.Z, toCenter.X)
 
 	-- Floor disc and walls.
-	BuildKit.cylinder(city, "Plaza", center + Vector3.new(0, 0.5, 0), 1, radius * 2, theme.floor, theme.floorMaterial)
+	BuildKit.cylinder(city, "Plaza", center + Vector3.new(0, 0.2, 0), 0.8, radius * 2, theme.floor, theme.floorMaterial)
 	ringWall(city, center, radius, 24, theme, gateAngle)
 
 	-- Paifang at the gate.
@@ -163,10 +163,10 @@ local function buildCity(parent: Instance, spec: CitySpec)
 	local placed: { Placed } = {}
 
 	local function tryPlace(buildingW: number, buildingD: number, build: (CFrame) -> ())
-		local footprint = math.max(buildingW, buildingD) / 2 + 10
-		for _ = 1, 24 do
+		local footprint = math.max(buildingW, buildingD) / 2 + 8
+		for _ = 1, 40 do
 			local angle = rng:NextNumber(0, math.pi * 2)
-			local dist = rng:NextNumber(0.2, 0.82) * radius
+			local dist = rng:NextNumber(0.18, 0.86) * radius
 			local x = center.X + math.cos(angle) * dist
 			local z = center.Z + math.sin(angle) * dist
 			-- Keep the gate avenue open: reject spots near the center-gate line.
@@ -211,11 +211,11 @@ local function buildCity(parent: Instance, spec: CitySpec)
 	end
 
 	local mix = {
-		{ count = 7, style = "house", floors = 2, w = 38, d = 30 },
-		{ count = 6, style = "house", floors = 1, w = 34, d = 26 },
-		{ count = 6, style = "hut", floors = 1, w = 20, d = 16 },
-		{ count = 2, style = "hall", floors = 1, w = 62, d = 30 },
-		{ count = 1, style = "tower", floors = 3, w = 24, d = 24 },
+		{ count = 10, style = "house", floors = 2, w = 44, d = 34 },
+		{ count = 9, style = "house", floors = 1, w = 38, d = 30 },
+		{ count = 8, style = "hut", floors = 1, w = 24, d = 18 },
+		{ count = 3, style = "hall", floors = 1, w = 70, d = 34 },
+		{ count = 2, style = "tower", floors = 3, w = 28, d = 28 },
 	}
 	for _, entry in mix do
 		for _ = 1, entry.count do

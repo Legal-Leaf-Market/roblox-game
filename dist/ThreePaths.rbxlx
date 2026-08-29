@@ -5997,7 +5997,7 @@ local function buildCity(parent: Instance, spec: CitySpec)
 	local gateAngle = math.atan2(toCenter.Z, toCenter.X)
 
 	-- Floor disc and walls.
-	BuildKit.cylinder(city, "Plaza", center + Vector3.new(0, 0.5, 0), 1, radius * 2, theme.floor, theme.floorMaterial)
+	BuildKit.cylinder(city, "Plaza", center + Vector3.new(0, 0.2, 0), 0.8, radius * 2, theme.floor, theme.floorMaterial)
 	ringWall(city, center, radius, 24, theme, gateAngle)
 
 	-- Paifang at the gate.
@@ -6018,10 +6018,10 @@ local function buildCity(parent: Instance, spec: CitySpec)
 	local placed: { Placed } = {}
 
 	local function tryPlace(buildingW: number, buildingD: number, build: (CFrame) -> ())
-		local footprint = math.max(buildingW, buildingD) / 2 + 10
-		for _ = 1, 24 do
+		local footprint = math.max(buildingW, buildingD) / 2 + 8
+		for _ = 1, 40 do
 			local angle = rng:NextNumber(0, math.pi * 2)
-			local dist = rng:NextNumber(0.2, 0.82) * radius
+			local dist = rng:NextNumber(0.18, 0.86) * radius
 			local x = center.X + math.cos(angle) * dist
 			local z = center.Z + math.sin(angle) * dist
 			-- Keep the gate avenue open: reject spots near the center-gate line.
@@ -6066,11 +6066,11 @@ local function buildCity(parent: Instance, spec: CitySpec)
 	end
 
 	local mix = {
-		{ count = 7, style = "house", floors = 2, w = 38, d = 30 },
-		{ count = 6, style = "house", floors = 1, w = 34, d = 26 },
-		{ count = 6, style = "hut", floors = 1, w = 20, d = 16 },
-		{ count = 2, style = "hall", floors = 1, w = 62, d = 30 },
-		{ count = 1, style = "tower", floors = 3, w = 24, d = 24 },
+		{ count = 10, style = "house", floors = 2, w = 44, d = 34 },
+		{ count = 9, style = "house", floors = 1, w = 38, d = 30 },
+		{ count = 8, style = "hut", floors = 1, w = 24, d = 18 },
+		{ count = 3, style = "hall", floors = 1, w = 70, d = 34 },
+		{ count = 2, style = "tower", floors = 3, w = 28, d = 28 },
 	}
 	for _, entry in mix do
 		for _ = 1, entry.count do
@@ -6611,28 +6611,30 @@ end
 -- --------------------------- The mountain ring --------------------------
 
 local function buildPeak(rng: Random, base: Vector3, height: number, girth: number)
-	local levels = rng:NextInteger(6, 8)
-	local position = base
+	-- Many smaller, hard-jittered masses instead of a few big spheres, so
+	-- peaks come out craggy rather than domed.
+	local levels = rng:NextInteger(9, 12)
 	for level = 0, levels do
 		local t = level / levels
-		local radius = girth * (1 - t * 0.82) * rng:NextNumber(0.85, 1.15)
-		local material = if t > 0.55 then Enum.Material.Slate else Enum.Material.Rock
+		local radius = girth * (1 - t * 0.78) * rng:NextNumber(0.55, 0.95)
+		local material = if t > 0.5 then Enum.Material.Slate else Enum.Material.Rock
 		fillBall(
 			Vector3.new(
-				position.X + rng:NextNumber(-girth * 0.2, girth * 0.2),
+				base.X + rng:NextNumber(-girth * 0.38, girth * 0.38),
 				height * t,
-				position.Z + rng:NextNumber(-girth * 0.2, girth * 0.2)
+				base.Z + rng:NextNumber(-girth * 0.38, girth * 0.38)
 			),
 			math.max(10, radius),
 			material
 		)
 	end
-	-- A spur or two at the shoulder.
-	for _ = 1, rng:NextInteger(1, 2) do
+	-- Shoulder spurs and splinter crags around the base.
+	for _ = 1, rng:NextInteger(3, 5) do
 		local spurAngle = rng:NextNumber(0, math.pi * 2)
+		local spurDist = girth * rng:NextNumber(0.7, 1.15)
 		fillBall(
-			base + Vector3.new(math.cos(spurAngle) * girth * 0.9, height * rng:NextNumber(0.2, 0.4), math.sin(spurAngle) * girth * 0.9),
-			girth * rng:NextNumber(0.35, 0.55),
+			base + Vector3.new(math.cos(spurAngle) * spurDist, height * rng:NextNumber(0.1, 0.45), math.sin(spurAngle) * spurDist),
+			girth * rng:NextNumber(0.22, 0.42),
 			Enum.Material.Rock
 		)
 	end
@@ -6661,7 +6663,7 @@ local function buildMountains(rng: Random)
 	fillCylinder(Vector3.new(Island.NORTH_PEAK.X, Island.NORTH_PEAK_TOP - 4, Island.NORTH_PEAK.Z), 8, 80, Enum.Material.Slate)
 
 	-- Waterfall: a sheet of water down the peak's inner face into a pool.
-	fillBlock(Vector3.new(0, (Island.NORTH_PEAK_TOP + Island.VALLEY_Y) / 2, -585), Vector3.new(30, Island.NORTH_PEAK_TOP - Island.VALLEY_Y, 8), Enum.Material.Water)
+	fillBlock(Vector3.new(0, (Island.NORTH_PEAK_TOP + Island.VALLEY_Y) / 2, -585), Vector3.new(46, Island.NORTH_PEAK_TOP - Island.VALLEY_Y, 8), Enum.Material.Water)
 	fillCylinder(Vector3.new(0, Island.VALLEY_Y - 2, -448), 5, 52, Enum.Material.Water)
 end
 
