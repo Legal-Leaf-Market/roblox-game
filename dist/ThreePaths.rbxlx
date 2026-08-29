@@ -7329,6 +7329,7 @@ return WorldBuilder
   <Item class="StarterPlayer" referent="42">
     <Properties>
       <string name="Name">StarterPlayer</string>
+      <float name="CameraMaxZoomDistance">800</float>
     </Properties>
     <Item class="StarterPlayerScripts" referent="43">
       <Properties>
