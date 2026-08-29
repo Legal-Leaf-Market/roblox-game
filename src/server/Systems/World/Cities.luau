@@ -75,35 +75,175 @@ local THEMES: { [string]: CityTheme } = {
 	},
 }
 
--- A circular rampart with a gate gap facing `gateAngle` (radians from +X).
+-- A circular rampart with a gate gap facing `gateAngle` (radians from +X):
+-- skirted base, tall curtain, tiled coping, crenellated parapet, and
+-- roofed watchtowers on the ring.
+local GATE_HALF_ANGLE = math.rad(8)
+
 local function ringWall(parent: Instance, center: Vector3, radius: number, height: number, theme: CityTheme, gateAngle: number)
-	local segments = 30
+	local segments = 36
 	local segmentLength = 2 * math.pi * radius / segments + 3
 	for index = 1, segments do
 		local angle = index / segments * math.pi * 2
 		local delta = math.atan2(math.sin(angle - gateAngle), math.cos(angle - gateAngle))
-		if math.abs(delta) < math.rad(10) then
+		if math.abs(delta) < GATE_HALF_ANGLE then
 			continue -- the gate opening
 		end
 		local position = center + Vector3.new(math.cos(angle) * radius, height / 2, math.sin(angle) * radius)
 		local tangent = Vector3.new(-math.sin(angle), 0, math.cos(angle))
+		local wallCF = CFrame.lookAt(position, position + tangent)
 		BuildKit.part({
 			name = "CityWall",
-			size = Vector3.new(4, height, segmentLength),
-			cframe = CFrame.lookAt(position, position + tangent),
+			size = Vector3.new(7, height, segmentLength),
+			cframe = wallCF,
 			color = theme.wall,
 			material = theme.wallMaterial,
 			parent = parent,
 		})
 		BuildKit.part({
+			name = "CityWall_Skirt",
+			size = Vector3.new(10, 4, segmentLength + 1),
+			cframe = wallCF * CFrame.new(0, -height / 2 + 2, 0),
+			color = theme.wall,
+			material = Enum.Material.Cobblestone,
+			parent = parent,
+		})
+		BuildKit.part({
 			name = "CityWall_Coping",
-			size = Vector3.new(7, 1.4, segmentLength + 1),
-			cframe = CFrame.lookAt(position + Vector3.new(0, height / 2 + 0.7, 0), position + Vector3.new(0, height / 2 + 0.7, 0) + tangent),
+			size = Vector3.new(10.5, 1.6, segmentLength + 1),
+			cframe = wallCF * CFrame.new(0, height / 2 + 0.8, 0),
 			color = theme.roof,
 			material = Enum.Material.Slate,
 			parent = parent,
 		})
+		-- Crenellated parapet along the outer lip.
+		local merlons = math.floor(segmentLength / 12)
+		for merlonIndex = 1, merlons do
+			local along = (merlonIndex - 0.5) / merlons * segmentLength - segmentLength / 2
+			BuildKit.part({
+				name = "CityWall_Merlon",
+				size = Vector3.new(3, 3.2, 4.5),
+				cframe = wallCF * CFrame.new(-4, height / 2 + 3.2, along),
+				color = theme.wall,
+				material = theme.wallMaterial,
+				parent = parent,
+			})
+		end
 	end
+
+	-- Watchtowers on the ring, skipping the gate bearing.
+	for towerIndex = 1, 8 do
+		local angle = towerIndex / 8 * math.pi * 2 + math.pi / 8
+		local delta = math.atan2(math.sin(angle - gateAngle), math.cos(angle - gateAngle))
+		if math.abs(delta) < math.rad(24) then
+			continue
+		end
+		local towerPos = center + Vector3.new(math.cos(angle) * radius, 0, math.sin(angle) * radius)
+		BuildKit.cylinder(parent, "Wall_Tower", towerPos + Vector3.new(0, (height + 14) / 2, 0), height + 14, 18, theme.wall, theme.wallMaterial)
+		BuildKit.roofCF(parent, CFrame.new(towerPos.X, towerPos.Y, towerPos.Z), 14, 14, height + 14, theme.roof, theme.roofMaterial)
+		local beacon = BuildKit.part({
+			name = "Wall_TowerLantern",
+			size = Vector3.new(2, 2.4, 2),
+			position = towerPos + Vector3.new(0, height + 11, 0),
+			color = Color3.fromRGB(214, 58, 44),
+			material = Enum.Material.Neon,
+			canCollide = false,
+			parent = parent,
+		})
+		BuildKit.pointLight(beacon, Color3.fromRGB(255, 150, 100), 1.4, 30)
+	end
+end
+
+-- A proper city gatehouse: flanking square towers with tiled caps, a
+-- roofed arch bridging them, a name board, guardian lions, lanterns, and
+-- wall stubs closing the curtain up to the towers.
+local function gatehouse(parent: Instance, center: Vector3, radius: number, theme: CityTheme, toCenter: Vector3, wallHeight: number): Part
+	local gatePos = Vector3.new(center.X + toCenter.X * radius, center.Y, center.Z + toCenter.Z * radius)
+	local cf = CFrame.lookAt(gatePos, gatePos + toCenter) -- -Z faces out of the city
+	local function at(offset: Vector3): CFrame
+		return cf * CFrame.new(offset)
+	end
+
+	for towerSign = -1, 1, 2 do
+		BuildKit.part({
+			name = "Gate_Tower",
+			size = Vector3.new(14, wallHeight + 18, 14),
+			cframe = at(Vector3.new(towerSign * 32, (wallHeight + 18) / 2, 0)),
+			color = theme.wall,
+			material = theme.wallMaterial,
+			parent = parent,
+		})
+		BuildKit.roofCF(parent, cf * CFrame.new(towerSign * 32, 0, 0), 13, 13, wallHeight + 18, theme.roof, theme.roofMaterial)
+		local lantern = BuildKit.part({
+			name = "Gate_Lantern",
+			size = Vector3.new(2.4, 3, 2.4),
+			cframe = at(Vector3.new(towerSign * 32, wallHeight - 2, 9)),
+			color = Color3.fromRGB(214, 58, 44),
+			material = Enum.Material.Neon,
+			canCollide = false,
+			parent = parent,
+		})
+		BuildKit.pointLight(lantern, Color3.fromRGB(255, 150, 100), 1.6, 30)
+	end
+
+	-- Arch beam and its roof bridge the towers.
+	BuildKit.part({
+		name = "Gate_Arch",
+		size = Vector3.new(52, 9, 12),
+		cframe = at(Vector3.new(0, wallHeight + 4, 0)),
+		color = theme.wall,
+		material = theme.wallMaterial,
+		parent = parent,
+	})
+	BuildKit.roofCF(parent, cf, 48, 16, wallHeight + 8.5, theme.roof, theme.roofMaterial)
+
+	local board = BuildKit.part({
+		name = "Gate_Board",
+		size = Vector3.new(24, 6, 1.6),
+		cframe = at(Vector3.new(0, wallHeight + 1, 7)),
+		color = Color3.fromRGB(32, 28, 26),
+		material = Enum.Material.Wood,
+		canCollide = false,
+		parent = parent,
+	})
+
+	-- Guardian lions on pedestals, watching the road.
+	for lionSign = -1, 1, 2 do
+		BuildKit.part({
+			name = "Gate_LionPedestal",
+			size = Vector3.new(7, 5, 7),
+			cframe = at(Vector3.new(lionSign * 20, 2.5, 14)),
+			color = Color3.fromRGB(148, 146, 142),
+			material = Enum.Material.Slate,
+			parent = parent,
+		})
+		BuildKit.part({
+			name = "Gate_Lion",
+			size = Vector3.new(4.5, 5.5, 6.5),
+			cframe = at(Vector3.new(lionSign * 20, 7.5, 14)) * CFrame.Angles(0, math.rad(lionSign * 8), math.rad(lionSign * 4)),
+			color = Color3.fromRGB(126, 122, 116),
+			material = Enum.Material.Slate,
+			canCollide = false,
+			parent = parent,
+		})
+	end
+
+	-- Close the curtain from the towers to the wall ends.
+	local gapChord = 2 * radius * math.sin(GATE_HALF_ANGLE)
+	local stubLength = gapChord / 2 - 39
+	if stubLength > 3 then
+		for stubSign = -1, 1, 2 do
+			BuildKit.part({
+				name = "Gate_WallStub",
+				size = Vector3.new(stubLength, wallHeight, 7),
+				cframe = at(Vector3.new(stubSign * (39 + stubLength / 2), wallHeight / 2, 0)),
+				color = theme.wall,
+				material = theme.wallMaterial,
+				parent = parent,
+			})
+		end
+	end
+	return board
 end
 
 type CitySpec = {
@@ -143,12 +283,12 @@ local function buildCity(parent: Instance, spec: CitySpec)
 
 	-- Floor disc and walls.
 	BuildKit.cylinder(city, "Plaza", center + Vector3.new(0, 0.2, 0), 0.8, radius * 2, theme.floor, theme.floorMaterial)
-	ringWall(city, center, radius, 24, theme, gateAngle)
+	ringWall(city, center, radius, 30, theme, gateAngle)
 
-	-- Paifang at the gate.
+	-- The gatehouse carries the city's name board.
 	local gatePos = center + toCenter * (radius + 10)
-	local sign = BuildKit.paifang(city, Vector3.new(gatePos.X, center.Y, gatePos.Z), toCenter, 44, TIMBER, theme.roof)
-	BuildKit.billboard(sign, `{spec.name}\n{spec.subtitle}`, spec.accent, 18, 3, Vector3.new(0, 4, 0))
+	local board = gatehouse(city, center, radius, theme, toCenter, 30)
+	BuildKit.billboard(board, `{spec.name}\n{spec.subtitle}`, spec.accent, 18, 3, Vector3.new(0, 5, 0))
 
 	-- Organic village scatter, in the reference's manner: a seeded mix of
 	-- building styles dropped with collision checks, keeping the gate
@@ -211,11 +351,11 @@ local function buildCity(parent: Instance, spec: CitySpec)
 	end
 
 	local mix = {
-		{ count = 10, style = "house", floors = 2, w = 44, d = 34 },
-		{ count = 9, style = "house", floors = 1, w = 38, d = 30 },
-		{ count = 8, style = "hut", floors = 1, w = 24, d = 18 },
-		{ count = 3, style = "hall", floors = 1, w = 70, d = 34 },
-		{ count = 2, style = "tower", floors = 3, w = 28, d = 28 },
+		{ count = 13, style = "house", floors = 2, w = 44, d = 34 },
+		{ count = 12, style = "house", floors = 1, w = 38, d = 30 },
+		{ count = 11, style = "hut", floors = 1, w = 24, d = 18 },
+		{ count = 4, style = "hall", floors = 1, w = 70, d = 34 },
+		{ count = 3, style = "tower", floors = 3, w = 28, d = 28 },
 	}
 	for _, entry in mix do
 		for _ = 1, entry.count do
@@ -333,7 +473,7 @@ local function buildCity(parent: Instance, spec: CitySpec)
 
 	for i = -1, 1 do
 		local side = Vector3.new(-toCenter.Z, 0, toCenter.X)
-		BuildKit.trainingDummy(city, Vector3.new(gatePos.X, center.Y, gatePos.Z) + side * (i * 16) + toCenter * 26)
+		BuildKit.trainingDummy(city, Vector3.new(gatePos.X, center.Y, gatePos.Z) + side * (i * 16) + toCenter * 44)
 	end
 end
 
@@ -341,28 +481,28 @@ function Cities.build(parent: Instance)
 	local specs: { CitySpec } = {
 		{
 			key = "orthodox",
-			radius = 260,
+			radius = 320,
 			name = Paths.orthodox.cityName,
 			subtitle = Paths.orthodox.name,
 			accent = Paths.orthodox.accentColor,
 		},
 		{
 			key = "demonic",
-			radius = 260,
+			radius = 320,
 			name = Paths.demonic.cityName,
 			subtitle = Paths.demonic.name,
 			accent = Paths.demonic.accentColor,
 		},
 		{
 			key = "unorthodox",
-			radius = 260,
+			radius = 320,
 			name = Paths.unorthodox.cityName,
 			subtitle = Paths.unorthodox.name,
 			accent = Paths.unorthodox.accentColor,
 		},
 		{
 			key = "central",
-			radius = 330,
+			radius = 430,
 			name = "Cloudrest",
 			subtitle = "The Free City",
 			accent = Color3.fromRGB(235, 230, 215),

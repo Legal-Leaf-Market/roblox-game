@@ -37,6 +37,8 @@ local stamina = MAX_STAMINA
 local sprinting = false
 local dashReadyAt = 0
 local dashAnimUntil = 0
+local speedMult = 1 -- smoothed sprint multiplier, so speed ramps instead of popping
+local animSpeed = 1 -- smoothed animation playback rate
 local movementTrack: AnimationTrack? = nil
 
 local function setupAnimations(model: Model)
@@ -160,9 +162,8 @@ local function dash()
 	local track = movementTrack
 	if track then
 		if not track.IsPlaying then
-			track:Play(0.05)
+			track:Play(0.12)
 		end
-		track:AdjustSpeed(2.4)
 	end
 
 	-- Blue qi ribbon streaming off the feet.
@@ -246,22 +247,28 @@ function MovementController.Init()
 		else
 			stamina = math.min(MAX_STAMINA, stamina + STAMINA_REGEN * deltaTime)
 		end
-		humanoid.WalkSpeed = (base + flat + qiStep) * factor * (if sprintingNow then SPRINT_MULT else 1)
+		-- Ease the sprint multiplier in and out so speed ramps smoothly.
+		local targetMult = if sprintingNow then SPRINT_MULT else 1
+		speedMult += (targetMult - speedMult) * math.min(1, deltaTime * 7)
+		humanoid.WalkSpeed = (base + flat + qiStep) * factor * speedMult
 		ClientState.FireStamina(stamina, MAX_STAMINA)
 
 		-- Martial run animation while sprinting, qi-stepping, or dashing;
-		-- ordinary walking keeps the default gait.
+		-- ordinary walking keeps the default gait. Playback rate eases
+		-- toward its target instead of snapping.
 		local track = movementTrack
 		if track then
 			local dashing = os.clock() < dashAnimUntil
 			local shouldRun = dashing or (moving and (sprintingNow or qiStep > 0))
+			local targetAnimSpeed = if dashing then 2.2 else math.max(0.8, humanoid.WalkSpeed / 16)
+			animSpeed += (targetAnimSpeed - animSpeed) * math.min(1, deltaTime * 6)
 			if shouldRun then
 				if not track.IsPlaying then
-					track:Play(0.15)
+					track:Play(0.3)
 				end
-				track:AdjustSpeed(if dashing then 2.4 else math.max(0.8, humanoid.WalkSpeed / 16))
+				track:AdjustSpeed(animSpeed)
 			elseif track.IsPlaying then
-				track:Stop(0.2)
+				track:Stop(0.35)
 			end
 		end
 	end)

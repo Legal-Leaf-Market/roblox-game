@@ -5930,35 +5930,175 @@ local THEMES: { [string]: CityTheme } = {
 	},
 }
 
--- A circular rampart with a gate gap facing `gateAngle` (radians from +X).
+-- A circular rampart with a gate gap facing `gateAngle` (radians from +X):
+-- skirted base, tall curtain, tiled coping, crenellated parapet, and
+-- roofed watchtowers on the ring.
+local GATE_HALF_ANGLE = math.rad(8)
+
 local function ringWall(parent: Instance, center: Vector3, radius: number, height: number, theme: CityTheme, gateAngle: number)
-	local segments = 30
+	local segments = 36
 	local segmentLength = 2 * math.pi * radius / segments + 3
 	for index = 1, segments do
 		local angle = index / segments * math.pi * 2
 		local delta = math.atan2(math.sin(angle - gateAngle), math.cos(angle - gateAngle))
-		if math.abs(delta) < math.rad(10) then
+		if math.abs(delta) < GATE_HALF_ANGLE then
 			continue -- the gate opening
 		end
 		local position = center + Vector3.new(math.cos(angle) * radius, height / 2, math.sin(angle) * radius)
 		local tangent = Vector3.new(-math.sin(angle), 0, math.cos(angle))
+		local wallCF = CFrame.lookAt(position, position + tangent)
 		BuildKit.part({
 			name = "CityWall",
-			size = Vector3.new(4, height, segmentLength),
-			cframe = CFrame.lookAt(position, position + tangent),
+			size = Vector3.new(7, height, segmentLength),
+			cframe = wallCF,
 			color = theme.wall,
 			material = theme.wallMaterial,
 			parent = parent,
 		})
 		BuildKit.part({
+			name = "CityWall_Skirt",
+			size = Vector3.new(10, 4, segmentLength + 1),
+			cframe = wallCF * CFrame.new(0, -height / 2 + 2, 0),
+			color = theme.wall,
+			material = Enum.Material.Cobblestone,
+			parent = parent,
+		})
+		BuildKit.part({
 			name = "CityWall_Coping",
-			size = Vector3.new(7, 1.4, segmentLength + 1),
-			cframe = CFrame.lookAt(position + Vector3.new(0, height / 2 + 0.7, 0), position + Vector3.new(0, height / 2 + 0.7, 0) + tangent),
+			size = Vector3.new(10.5, 1.6, segmentLength + 1),
+			cframe = wallCF * CFrame.new(0, height / 2 + 0.8, 0),
 			color = theme.roof,
 			material = Enum.Material.Slate,
 			parent = parent,
 		})
+		-- Crenellated parapet along the outer lip.
+		local merlons = math.floor(segmentLength / 12)
+		for merlonIndex = 1, merlons do
+			local along = (merlonIndex - 0.5) / merlons * segmentLength - segmentLength / 2
+			BuildKit.part({
+				name = "CityWall_Merlon",
+				size = Vector3.new(3, 3.2, 4.5),
+				cframe = wallCF * CFrame.new(-4, height / 2 + 3.2, along),
+				color = theme.wall,
+				material = theme.wallMaterial,
+				parent = parent,
+			})
+		end
 	end
+
+	-- Watchtowers on the ring, skipping the gate bearing.
+	for towerIndex = 1, 8 do
+		local angle = towerIndex / 8 * math.pi * 2 + math.pi / 8
+		local delta = math.atan2(math.sin(angle - gateAngle), math.cos(angle - gateAngle))
+		if math.abs(delta) < math.rad(24) then
+			continue
+		end
+		local towerPos = center + Vector3.new(math.cos(angle) * radius, 0, math.sin(angle) * radius)
+		BuildKit.cylinder(parent, "Wall_Tower", towerPos + Vector3.new(0, (height + 14) / 2, 0), height + 14, 18, theme.wall, theme.wallMaterial)
+		BuildKit.roofCF(parent, CFrame.new(towerPos.X, towerPos.Y, towerPos.Z), 14, 14, height + 14, theme.roof, theme.roofMaterial)
+		local beacon = BuildKit.part({
+			name = "Wall_TowerLantern",
+			size = Vector3.new(2, 2.4, 2),
+			position = towerPos + Vector3.new(0, height + 11, 0),
+			color = Color3.fromRGB(214, 58, 44),
+			material = Enum.Material.Neon,
+			canCollide = false,
+			parent = parent,
+		})
+		BuildKit.pointLight(beacon, Color3.fromRGB(255, 150, 100), 1.4, 30)
+	end
+end
+
+-- A proper city gatehouse: flanking square towers with tiled caps, a
+-- roofed arch bridging them, a name board, guardian lions, lanterns, and
+-- wall stubs closing the curtain up to the towers.
+local function gatehouse(parent: Instance, center: Vector3, radius: number, theme: CityTheme, toCenter: Vector3, wallHeight: number): Part
+	local gatePos = Vector3.new(center.X + toCenter.X * radius, center.Y, center.Z + toCenter.Z * radius)
+	local cf = CFrame.lookAt(gatePos, gatePos + toCenter) -- -Z faces out of the city
+	local function at(offset: Vector3): CFrame
+		return cf * CFrame.new(offset)
+	end
+
+	for towerSign = -1, 1, 2 do
+		BuildKit.part({
+			name = "Gate_Tower",
+			size = Vector3.new(14, wallHeight + 18, 14),
+			cframe = at(Vector3.new(towerSign * 32, (wallHeight + 18) / 2, 0)),
+			color = theme.wall,
+			material = theme.wallMaterial,
+			parent = parent,
+		})
+		BuildKit.roofCF(parent, cf * CFrame.new(towerSign * 32, 0, 0), 13, 13, wallHeight + 18, theme.roof, theme.roofMaterial)
+		local lantern = BuildKit.part({
+			name = "Gate_Lantern",
+			size = Vector3.new(2.4, 3, 2.4),
+			cframe = at(Vector3.new(towerSign * 32, wallHeight - 2, 9)),
+			color = Color3.fromRGB(214, 58, 44),
+			material = Enum.Material.Neon,
+			canCollide = false,
+			parent = parent,
+		})
+		BuildKit.pointLight(lantern, Color3.fromRGB(255, 150, 100), 1.6, 30)
+	end
+
+	-- Arch beam and its roof bridge the towers.
+	BuildKit.part({
+		name = "Gate_Arch",
+		size = Vector3.new(52, 9, 12),
+		cframe = at(Vector3.new(0, wallHeight + 4, 0)),
+		color = theme.wall,
+		material = theme.wallMaterial,
+		parent = parent,
+	})
+	BuildKit.roofCF(parent, cf, 48, 16, wallHeight + 8.5, theme.roof, theme.roofMaterial)
+
+	local board = BuildKit.part({
+		name = "Gate_Board",
+		size = Vector3.new(24, 6, 1.6),
+		cframe = at(Vector3.new(0, wallHeight + 1, 7)),
+		color = Color3.fromRGB(32, 28, 26),
+		material = Enum.Material.Wood,
+		canCollide = false,
+		parent = parent,
+	})
+
+	-- Guardian lions on pedestals, watching the road.
+	for lionSign = -1, 1, 2 do
+		BuildKit.part({
+			name = "Gate_LionPedestal",
+			size = Vector3.new(7, 5, 7),
+			cframe = at(Vector3.new(lionSign * 20, 2.5, 14)),
+			color = Color3.fromRGB(148, 146, 142),
+			material = Enum.Material.Slate,
+			parent = parent,
+		})
+		BuildKit.part({
+			name = "Gate_Lion",
+			size = Vector3.new(4.5, 5.5, 6.5),
+			cframe = at(Vector3.new(lionSign * 20, 7.5, 14)) * CFrame.Angles(0, math.rad(lionSign * 8), math.rad(lionSign * 4)),
+			color = Color3.fromRGB(126, 122, 116),
+			material = Enum.Material.Slate,
+			canCollide = false,
+			parent = parent,
+		})
+	end
+
+	-- Close the curtain from the towers to the wall ends.
+	local gapChord = 2 * radius * math.sin(GATE_HALF_ANGLE)
+	local stubLength = gapChord / 2 - 39
+	if stubLength > 3 then
+		for stubSign = -1, 1, 2 do
+			BuildKit.part({
+				name = "Gate_WallStub",
+				size = Vector3.new(stubLength, wallHeight, 7),
+				cframe = at(Vector3.new(stubSign * (39 + stubLength / 2), wallHeight / 2, 0)),
+				color = theme.wall,
+				material = theme.wallMaterial,
+				parent = parent,
+			})
+		end
+	end
+	return board
 end
 
 type CitySpec = {
@@ -5998,12 +6138,12 @@ local function buildCity(parent: Instance, spec: CitySpec)
 
 	-- Floor disc and walls.
 	BuildKit.cylinder(city, "Plaza", center + Vector3.new(0, 0.2, 0), 0.8, radius * 2, theme.floor, theme.floorMaterial)
-	ringWall(city, center, radius, 24, theme, gateAngle)
+	ringWall(city, center, radius, 30, theme, gateAngle)
 
-	-- Paifang at the gate.
+	-- The gatehouse carries the city's name board.
 	local gatePos = center + toCenter * (radius + 10)
-	local sign = BuildKit.paifang(city, Vector3.new(gatePos.X, center.Y, gatePos.Z), toCenter, 44, TIMBER, theme.roof)
-	BuildKit.billboard(sign, `{spec.name}\n{spec.subtitle}`, spec.accent, 18, 3, Vector3.new(0, 4, 0))
+	local board = gatehouse(city, center, radius, theme, toCenter, 30)
+	BuildKit.billboard(board, `{spec.name}\n{spec.subtitle}`, spec.accent, 18, 3, Vector3.new(0, 5, 0))
 
 	-- Organic village scatter, in the reference's manner: a seeded mix of
 	-- building styles dropped with collision checks, keeping the gate
@@ -6066,11 +6206,11 @@ local function buildCity(parent: Instance, spec: CitySpec)
 	end
 
 	local mix = {
-		{ count = 10, style = "house", floors = 2, w = 44, d = 34 },
-		{ count = 9, style = "house", floors = 1, w = 38, d = 30 },
-		{ count = 8, style = "hut", floors = 1, w = 24, d = 18 },
-		{ count = 3, style = "hall", floors = 1, w = 70, d = 34 },
-		{ count = 2, style = "tower", floors = 3, w = 28, d = 28 },
+		{ count = 13, style = "house", floors = 2, w = 44, d = 34 },
+		{ count = 12, style = "house", floors = 1, w = 38, d = 30 },
+		{ count = 11, style = "hut", floors = 1, w = 24, d = 18 },
+		{ count = 4, style = "hall", floors = 1, w = 70, d = 34 },
+		{ count = 3, style = "tower", floors = 3, w = 28, d = 28 },
 	}
 	for _, entry in mix do
 		for _ = 1, entry.count do
@@ -6188,7 +6328,7 @@ local function buildCity(parent: Instance, spec: CitySpec)
 
 	for i = -1, 1 do
 		local side = Vector3.new(-toCenter.Z, 0, toCenter.X)
-		BuildKit.trainingDummy(city, Vector3.new(gatePos.X, center.Y, gatePos.Z) + side * (i * 16) + toCenter * 26)
+		BuildKit.trainingDummy(city, Vector3.new(gatePos.X, center.Y, gatePos.Z) + side * (i * 16) + toCenter * 44)
 	end
 end
 
@@ -6196,28 +6336,28 @@ function Cities.build(parent: Instance)
 	local specs: { CitySpec } = {
 		{
 			key = "orthodox",
-			radius = 260,
+			radius = 320,
 			name = Paths.orthodox.cityName,
 			subtitle = Paths.orthodox.name,
 			accent = Paths.orthodox.accentColor,
 		},
 		{
 			key = "demonic",
-			radius = 260,
+			radius = 320,
 			name = Paths.demonic.cityName,
 			subtitle = Paths.demonic.name,
 			accent = Paths.demonic.accentColor,
 		},
 		{
 			key = "unorthodox",
-			radius = 260,
+			radius = 320,
 			name = Paths.unorthodox.cityName,
 			subtitle = Paths.unorthodox.name,
 			accent = Paths.unorthodox.accentColor,
 		},
 		{
 			key = "central",
-			radius = 330,
+			radius = 430,
 			name = "Cloudrest",
 			subtitle = "The Free City",
 			accent = Color3.fromRGB(235, 230, 215),
@@ -6610,31 +6750,46 @@ end
 
 -- --------------------------- The mountain ring --------------------------
 
-local function buildPeak(rng: Random, base: Vector3, height: number, girth: number)
-	-- Many smaller, hard-jittered masses instead of a few big spheres, so
-	-- peaks come out craggy rather than domed.
-	local levels = rng:NextInteger(9, 12)
-	for level = 0, levels do
-		local t = level / levels
-		local radius = girth * (1 - t * 0.78) * rng:NextNumber(0.55, 0.95)
-		local material = if t > 0.5 then Enum.Material.Slate else Enum.Material.Rock
-		fillBall(
-			Vector3.new(
-				base.X + rng:NextNumber(-girth * 0.38, girth * 0.38),
-				height * t,
-				base.Z + rng:NextNumber(-girth * 0.38, girth * 0.38)
-			),
-			math.max(10, radius),
-			material
-		)
+-- Four terrain wedges arranged around a center make a pyramid: the
+-- angular summit form real mountains have and sphere stacks never will.
+local function fillPyramid(center: Vector3, baseWidth: number, height: number, yaw: number, material: Enum.Material)
+	for quarter = 0, 3 do
+		local cf = CFrame.new(center)
+			* CFrame.Angles(0, yaw + quarter * math.pi / 2, 0)
+			* CFrame.new(0, 0, -baseWidth / 4)
+		terrain:FillWedge(cf, Vector3.new(baseWidth, height, baseWidth / 2), material)
 	end
-	-- Shoulder spurs and splinter crags around the base.
-	for _ = 1, rng:NextInteger(3, 5) do
-		local spurAngle = rng:NextNumber(0, math.pi * 2)
-		local spurDist = girth * rng:NextNumber(0.7, 1.15)
-		fillBall(
-			base + Vector3.new(math.cos(spurAngle) * spurDist, height * rng:NextNumber(0.1, 0.45), math.sin(spurAngle) * spurDist),
-			girth * rng:NextNumber(0.22, 0.42),
+end
+
+local function buildPeak(rng: Random, base: Vector3, height: number, girth: number)
+	-- Grounded rock mass so the ridges rise out of something.
+	fillBall(Vector3.new(base.X, height * 0.16, base.Z), girth * 0.95, Enum.Material.Rock)
+	fillBall(
+		Vector3.new(base.X + rng:NextNumber(-girth * 0.25, girth * 0.25), height * 0.4, base.Z + rng:NextNumber(-girth * 0.25, girth * 0.25)),
+		girth * 0.6,
+		Enum.Material.Rock
+	)
+
+	-- Faceted shards: tall, slightly leaning wedges climbing the flanks.
+	for _ = 1, rng:NextInteger(4, 6) do
+		local yaw = rng:NextNumber(0, math.pi * 2)
+		local shardHeight = height * rng:NextNumber(0.5, 0.95)
+		local cf = CFrame.new(Vector3.new(
+			base.X + rng:NextNumber(-girth * 0.3, girth * 0.3),
+			shardHeight / 2,
+			base.Z + rng:NextNumber(-girth * 0.3, girth * 0.3)
+		)) * CFrame.Angles(0, yaw, 0) * CFrame.Angles(math.rad(rng:NextNumber(-7, 7)), 0, math.rad(rng:NextNumber(-7, 7)))
+		terrain:FillWedge(cf, Vector3.new(girth * rng:NextNumber(0.45, 0.8), shardHeight, girth * rng:NextNumber(0.35, 0.6)), Enum.Material.Slate)
+	end
+
+	-- Pyramid spires carry the summit to a real point.
+	fillPyramid(Vector3.new(base.X, height * 0.62, base.Z), girth * 0.9, height * 0.75, rng:NextNumber(0, math.pi), Enum.Material.Slate)
+	if rng:NextNumber() < 0.6 then
+		fillPyramid(
+			Vector3.new(base.X + rng:NextNumber(-girth * 0.4, girth * 0.4), height * 0.45, base.Z + rng:NextNumber(-girth * 0.4, girth * 0.4)),
+			girth * 0.6,
+			height * 0.5,
+			rng:NextNumber(0, math.pi),
 			Enum.Material.Rock
 		)
 	end
@@ -6661,6 +6816,8 @@ local function buildMountains(rng: Random)
 	-- The great north peak: tallest, flattened summit for the dark pagoda.
 	buildPeak(rng, Island.NORTH_PEAK, 745, 225)
 	fillCylinder(Vector3.new(Island.NORTH_PEAK.X, Island.NORTH_PEAK_TOP - 4, Island.NORTH_PEAK.Z), 8, 80, Enum.Material.Slate)
+	-- Shave anything the spires push above the pagoda platform.
+	fillBlock(Vector3.new(Island.NORTH_PEAK.X, Island.NORTH_PEAK_TOP + 45, Island.NORTH_PEAK.Z), Vector3.new(150, 90, 150), Enum.Material.Air)
 
 	-- Waterfall: a sheet of water down the peak's inner face into a pool.
 	fillBlock(Vector3.new(0, (Island.NORTH_PEAK_TOP + Island.VALLEY_Y) / 2, -585), Vector3.new(46, Island.NORTH_PEAK_TOP - Island.VALLEY_Y, 8), Enum.Material.Water)
@@ -6812,7 +6969,7 @@ local function buildRoads(parent: Instance)
 	end
 
 	-- Southern pass: city gate to the stair, stair landing to mine gate and ring.
-	road(parent, Vector3.new(0, Island.VALLEY_Y, 345), Vector3.new(0, Island.VALLEY_Y, 600), 14)
+	road(parent, Vector3.new(0, Island.VALLEY_Y, 445), Vector3.new(0, Island.VALLEY_Y, 600), 14)
 	road(parent, Vector3.new(0, 0, 920), Vector3.new(0, 0, 1280), 12)
 
 	-- Wooden bridges where the spokes cross the rivers.
@@ -8806,6 +8963,8 @@ local stamina = MAX_STAMINA
 local sprinting = false
 local dashReadyAt = 0
 local dashAnimUntil = 0
+local speedMult = 1 -- smoothed sprint multiplier, so speed ramps instead of popping
+local animSpeed = 1 -- smoothed animation playback rate
 local movementTrack: AnimationTrack? = nil
 
 local function setupAnimations(model: Model)
@@ -8929,9 +9088,8 @@ local function dash()
 	local track = movementTrack
 	if track then
 		if not track.IsPlaying then
-			track:Play(0.05)
+			track:Play(0.12)
 		end
-		track:AdjustSpeed(2.4)
 	end
 
 	-- Blue qi ribbon streaming off the feet.
@@ -9015,22 +9173,28 @@ function MovementController.Init()
 		else
 			stamina = math.min(MAX_STAMINA, stamina + STAMINA_REGEN * deltaTime)
 		end
-		humanoid.WalkSpeed = (base + flat + qiStep) * factor * (if sprintingNow then SPRINT_MULT else 1)
+		-- Ease the sprint multiplier in and out so speed ramps smoothly.
+		local targetMult = if sprintingNow then SPRINT_MULT else 1
+		speedMult += (targetMult - speedMult) * math.min(1, deltaTime * 7)
+		humanoid.WalkSpeed = (base + flat + qiStep) * factor * speedMult
 		ClientState.FireStamina(stamina, MAX_STAMINA)
 
 		-- Martial run animation while sprinting, qi-stepping, or dashing;
-		-- ordinary walking keeps the default gait.
+		-- ordinary walking keeps the default gait. Playback rate eases
+		-- toward its target instead of snapping.
 		local track = movementTrack
 		if track then
 			local dashing = os.clock() < dashAnimUntil
 			local shouldRun = dashing or (moving and (sprintingNow or qiStep > 0))
+			local targetAnimSpeed = if dashing then 2.2 else math.max(0.8, humanoid.WalkSpeed / 16)
+			animSpeed += (targetAnimSpeed - animSpeed) * math.min(1, deltaTime * 6)
 			if shouldRun then
 				if not track.IsPlaying then
-					track:Play(0.15)
+					track:Play(0.3)
 				end
-				track:AdjustSpeed(if dashing then 2.4 else math.max(0.8, humanoid.WalkSpeed / 16))
+				track:AdjustSpeed(animSpeed)
 			elseif track.IsPlaying then
-				track:Stop(0.2)
+				track:Stop(0.35)
 			end
 		end
 	end)

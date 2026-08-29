@@ -62,7 +62,7 @@ local function buildRoads(parent: Instance)
 	end
 
 	-- Southern pass: city gate to the stair, stair landing to mine gate and ring.
-	road(parent, Vector3.new(0, Island.VALLEY_Y, 345), Vector3.new(0, Island.VALLEY_Y, 600), 14)
+	road(parent, Vector3.new(0, Island.VALLEY_Y, 445), Vector3.new(0, Island.VALLEY_Y, 600), 14)
 	road(parent, Vector3.new(0, 0, 920), Vector3.new(0, 0, 1280), 12)
 
 	-- Wooden bridges where the spokes cross the rivers.

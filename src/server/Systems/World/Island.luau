@@ -137,31 +137,46 @@ end
 
 -- --------------------------- The mountain ring --------------------------
 
-local function buildPeak(rng: Random, base: Vector3, height: number, girth: number)
-	-- Many smaller, hard-jittered masses instead of a few big spheres, so
-	-- peaks come out craggy rather than domed.
-	local levels = rng:NextInteger(9, 12)
-	for level = 0, levels do
-		local t = level / levels
-		local radius = girth * (1 - t * 0.78) * rng:NextNumber(0.55, 0.95)
-		local material = if t > 0.5 then Enum.Material.Slate else Enum.Material.Rock
-		fillBall(
-			Vector3.new(
-				base.X + rng:NextNumber(-girth * 0.38, girth * 0.38),
-				height * t,
-				base.Z + rng:NextNumber(-girth * 0.38, girth * 0.38)
-			),
-			math.max(10, radius),
-			material
-		)
+-- Four terrain wedges arranged around a center make a pyramid: the
+-- angular summit form real mountains have and sphere stacks never will.
+local function fillPyramid(center: Vector3, baseWidth: number, height: number, yaw: number, material: Enum.Material)
+	for quarter = 0, 3 do
+		local cf = CFrame.new(center)
+			* CFrame.Angles(0, yaw + quarter * math.pi / 2, 0)
+			* CFrame.new(0, 0, -baseWidth / 4)
+		terrain:FillWedge(cf, Vector3.new(baseWidth, height, baseWidth / 2), material)
 	end
-	-- Shoulder spurs and splinter crags around the base.
-	for _ = 1, rng:NextInteger(3, 5) do
-		local spurAngle = rng:NextNumber(0, math.pi * 2)
-		local spurDist = girth * rng:NextNumber(0.7, 1.15)
-		fillBall(
-			base + Vector3.new(math.cos(spurAngle) * spurDist, height * rng:NextNumber(0.1, 0.45), math.sin(spurAngle) * spurDist),
-			girth * rng:NextNumber(0.22, 0.42),
+end
+
+local function buildPeak(rng: Random, base: Vector3, height: number, girth: number)
+	-- Grounded rock mass so the ridges rise out of something.
+	fillBall(Vector3.new(base.X, height * 0.16, base.Z), girth * 0.95, Enum.Material.Rock)
+	fillBall(
+		Vector3.new(base.X + rng:NextNumber(-girth * 0.25, girth * 0.25), height * 0.4, base.Z + rng:NextNumber(-girth * 0.25, girth * 0.25)),
+		girth * 0.6,
+		Enum.Material.Rock
+	)
+
+	-- Faceted shards: tall, slightly leaning wedges climbing the flanks.
+	for _ = 1, rng:NextInteger(4, 6) do
+		local yaw = rng:NextNumber(0, math.pi * 2)
+		local shardHeight = height * rng:NextNumber(0.5, 0.95)
+		local cf = CFrame.new(Vector3.new(
+			base.X + rng:NextNumber(-girth * 0.3, girth * 0.3),
+			shardHeight / 2,
+			base.Z + rng:NextNumber(-girth * 0.3, girth * 0.3)
+		)) * CFrame.Angles(0, yaw, 0) * CFrame.Angles(math.rad(rng:NextNumber(-7, 7)), 0, math.rad(rng:NextNumber(-7, 7)))
+		terrain:FillWedge(cf, Vector3.new(girth * rng:NextNumber(0.45, 0.8), shardHeight, girth * rng:NextNumber(0.35, 0.6)), Enum.Material.Slate)
+	end
+
+	-- Pyramid spires carry the summit to a real point.
+	fillPyramid(Vector3.new(base.X, height * 0.62, base.Z), girth * 0.9, height * 0.75, rng:NextNumber(0, math.pi), Enum.Material.Slate)
+	if rng:NextNumber() < 0.6 then
+		fillPyramid(
+			Vector3.new(base.X + rng:NextNumber(-girth * 0.4, girth * 0.4), height * 0.45, base.Z + rng:NextNumber(-girth * 0.4, girth * 0.4)),
+			girth * 0.6,
+			height * 0.5,
+			rng:NextNumber(0, math.pi),
 			Enum.Material.Rock
 		)
 	end
@@ -188,6 +203,8 @@ local function buildMountains(rng: Random)
 	-- The great north peak: tallest, flattened summit for the dark pagoda.
 	buildPeak(rng, Island.NORTH_PEAK, 745, 225)
 	fillCylinder(Vector3.new(Island.NORTH_PEAK.X, Island.NORTH_PEAK_TOP - 4, Island.NORTH_PEAK.Z), 8, 80, Enum.Material.Slate)
+	-- Shave anything the spires push above the pagoda platform.
+	fillBlock(Vector3.new(Island.NORTH_PEAK.X, Island.NORTH_PEAK_TOP + 45, Island.NORTH_PEAK.Z), Vector3.new(150, 90, 150), Enum.Material.Air)
 
 	-- Waterfall: a sheet of water down the peak's inner face into a pool.
 	fillBlock(Vector3.new(0, (Island.NORTH_PEAK_TOP + Island.VALLEY_Y) / 2, -585), Vector3.new(46, Island.NORTH_PEAK_TOP - Island.VALLEY_Y, 8), Enum.Material.Water)
