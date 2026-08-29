@@ -1,12 +1,14 @@
 --!strict
 -- ModuleScript: ServerScriptService > Server > Systems > WorldBuilder
--- Stamps the whole map out of code at server start: surface, mountain,
--- three cities, and the caves. Keeping the world in code (rather than in a
--- place file) is what lets the entire game live in git and build from a
--- clean checkout; nothing in Studio is hand-placed.
+-- Builds the whole island at server start: sculpted terrain first (Island),
+-- then surface works (roads, stairs, mine gate, peak pagoda), the four
+-- cities, biome flora, and the Deep Mines below. All from code, so the
+-- entire game builds from a clean checkout; nothing is hand-placed.
 
+local Island = require(script.Parent.World.Island)
 local Overworld = require(script.Parent.World.Overworld)
 local Cities = require(script.Parent.World.Cities)
+local Flora = require(script.Parent.World.Flora)
 local Underworld = require(script.Parent.World.Underworld)
 
 local WorldBuilder = {}
@@ -18,12 +20,14 @@ function WorldBuilder.Init()
 	local world = Instance.new("Folder")
 	world.Name = "World"
 
+	Island.build()
 	Overworld.build(world)
 	Cities.build(world)
+	Flora.build(world)
 	Underworld.build(world)
 
 	world.Parent = workspace
-	print("[WorldBuilder] Heavenpillar and the three cities stand.")
+	print("[WorldBuilder] The island stands: three realms, four cities, one mountain.")
 end
 
 return WorldBuilder

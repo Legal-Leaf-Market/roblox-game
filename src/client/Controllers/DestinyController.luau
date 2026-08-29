@@ -67,7 +67,7 @@ local function renderRaces()
 		local equipped = destiny.race == raceId
 		local row = UiKit.frame(raceList, UDim2.new(1, -8, 0, 46), UDim2.fromOffset(0, 0), UiKit.Colors.panelLight)
 		row.LayoutOrder = index
-		UiKit.label(row, `{race.name} {race.hanzi}`, UDim2.new(1, -90, 0, 18), UDim2.fromOffset(6, 3), {
+		UiKit.label(row, race.name, UDim2.new(1, -90, 0, 18), UDim2.fromOffset(6, 3), {
 			textSize = 13,
 			color = UiKit.rarityColor(race.rarity),
 			bold = true,
@@ -169,7 +169,7 @@ local function spin(kind: "race" | "talent")
 			if kind == "race" then
 				local race = Races.get(id)
 				if race then
-					displayName = `{race.name} {race.hanzi}`
+					displayName = race.name
 					blurb = race.blurb
 				end
 			else

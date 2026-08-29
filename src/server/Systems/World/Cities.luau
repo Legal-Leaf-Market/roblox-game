@@ -1,9 +1,10 @@
 --!strict
 -- ModuleScript: ServerScriptService > Server > Systems > World > Cities
--- The three path cities, ringed around Heavenpillar Mountain: White Cloud
--- City (orthodox, north), Freewind City (unorthodox, southeast), Blackfire
--- City (demonic, southwest). Each is a walled plaza with a pledge shrine,
--- team spawn, homes, lanterns and training dummies outside the gate.
+-- The four cities of the island, laid out like the reference map: circular
+-- ring-walled cities, one per biome realm plus the neutral city inside the
+-- mountain crater. White Cloud City in the snow (orthodox, north),
+-- Blackfire City in the desert (demonic, southwest), Freewind City in the
+-- forest (unorthodox, east), and Cloudrest, the free city, in the crater.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CollectionService = game:GetService("CollectionService")
@@ -12,181 +13,242 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Paths = require(Shared:WaitForChild("Data"):WaitForChild("Paths"))
 
 local BuildKit = require(script.Parent.BuildKit)
+local Island = require(script.Parent.Island)
 
 local Cities = {}
 
-local CITY_RADIUS = 380
-local PLAZA = 150 -- plaza edge length
-local WALL_HEIGHT = 20
-local WALL_THICKNESS = 4
-local GATE_WIDTH = 30
+-- City centers (ground level unless noted). Flora and roads read these.
+Cities.POSITIONS = table.freeze({
+	orthodox = Vector3.new(0, 0, -640),
+	demonic = Vector3.new(-600, 0, 330),
+	unorthodox = Vector3.new(620, 0, 240),
+	central = Vector3.new(0, Island.VALLEY_Y, 0),
+})
 
-local PLASTER = Color3.fromRGB(238, 231, 214)
 local TIMBER = Color3.fromRGB(74, 53, 39)
 
--- Dark tiled roofs, tinted per path so each city reads at a glance.
-local ROOF_COLORS: { [string]: Color3 } = {
-	orthodox = Color3.fromRGB(58, 74, 92),
-	unorthodox = Color3.fromRGB(52, 73, 59),
-	demonic = Color3.fromRGB(38, 30, 32),
+type CityTheme = {
+	wall: Color3,
+	wallMaterial: Enum.Material,
+	roof: Color3,
+	plaster: Color3,
+	floor: Color3,
+	floorMaterial: Enum.Material,
 }
+
+-- Palettes from the texture guide: white/stone/black tile for snow, sand
+-- and red tile for desert, white stone and green tile for the forest city.
+local THEMES: { [string]: CityTheme } = {
+	orthodox = {
+		wall = Color3.fromRGB(212, 216, 222),
+		wallMaterial = Enum.Material.Slate,
+		roof = Color3.fromRGB(43, 43, 50), -- tile roof black
+		plaster = Color3.fromRGB(240, 240, 238),
+		floor = Color3.fromRGB(198, 202, 210),
+		floorMaterial = Enum.Material.Slate,
+	},
+	demonic = {
+		wall = Color3.fromRGB(196, 156, 108),
+		wallMaterial = Enum.Material.Sandstone,
+		roof = Color3.fromRGB(143, 59, 46), -- tile roof red
+		plaster = Color3.fromRGB(222, 191, 143),
+		floor = Color3.fromRGB(186, 152, 105),
+		floorMaterial = Enum.Material.Sandstone,
+	},
+	unorthodox = {
+		wall = Color3.fromRGB(226, 222, 210),
+		wallMaterial = Enum.Material.Slate,
+		roof = Color3.fromRGB(61, 90, 62), -- tile roof green
+		plaster = Color3.fromRGB(237, 234, 224),
+		floor = Color3.fromRGB(206, 202, 190),
+		floorMaterial = Enum.Material.Cobblestone,
+	},
+	central = {
+		wall = Color3.fromRGB(184, 180, 172),
+		wallMaterial = Enum.Material.Slate,
+		roof = Color3.fromRGB(74, 85, 96), -- slate blue
+		plaster = Color3.fromRGB(238, 231, 214),
+		floor = Color3.fromRGB(180, 174, 160),
+		floorMaterial = Enum.Material.Cobblestone,
+	},
+}
+
+-- A circular rampart with a gate gap facing `gateAngle` (radians from +X).
+local function ringWall(parent: Instance, center: Vector3, radius: number, height: number, theme: CityTheme, gateAngle: number)
+	local segments = 22
+	local segmentLength = 2 * math.pi * radius / segments + 3
+	for index = 1, segments do
+		local angle = index / segments * math.pi * 2
+		local delta = math.atan2(math.sin(angle - gateAngle), math.cos(angle - gateAngle))
+		if math.abs(delta) < math.rad(16) then
+			continue -- the gate opening
+		end
+		local position = center + Vector3.new(math.cos(angle) * radius, height / 2, math.sin(angle) * radius)
+		local tangent = Vector3.new(-math.sin(angle), 0, math.cos(angle))
+		BuildKit.part({
+			name = "CityWall",
+			size = Vector3.new(4, height, segmentLength),
+			cframe = CFrame.lookAt(position, position + tangent),
+			color = theme.wall,
+			material = theme.wallMaterial,
+			parent = parent,
+		})
+		BuildKit.part({
+			name = "CityWall_Coping",
+			size = Vector3.new(7, 1.4, segmentLength + 1),
+			cframe = CFrame.lookAt(position + Vector3.new(0, height / 2 + 0.7, 0), position + Vector3.new(0, height / 2 + 0.7, 0) + tangent),
+			color = theme.roof,
+			material = Enum.Material.Slate,
+			parent = parent,
+		})
+	end
+end
 
 type CitySpec = {
-	pathId: string,
-	angle: number, -- degrees around the mountain, 0 = +Z (south)
-}
-
-local SPECS: { CitySpec } = {
-	{ pathId = "orthodox", angle = 180 }, -- north
-	{ pathId = "unorthodox", angle = 60 }, -- southeast
-	{ pathId = "demonic", angle = -60 }, -- southwest
+	key: string, -- into POSITIONS/THEMES; also a path id except "central"
+	radius: number,
+	name: string,
+	subtitle: string,
+	accent: Color3,
 }
 
 local function buildCity(parent: Instance, spec: CitySpec)
-	local path = Paths[spec.pathId]
-	local rad = math.rad(spec.angle)
-	local center = Vector3.new(math.sin(rad) * CITY_RADIUS, 0, math.cos(rad) * CITY_RADIUS)
-	-- The gate faces the mountain (map origin).
-	local toMountain = (Vector3.zero - center) * Vector3.new(1, 0, 1)
-	local gateDir = toMountain.Unit
+	local center = Cities.POSITIONS[spec.key]
+	local theme = THEMES[spec.key]
+	local pathDef = Paths[spec.key] -- nil for the central city
+	local radius = spec.radius
 
 	local city = Instance.new("Folder")
-	city.Name = path.cityName:gsub(" ", "")
+	city.Name = spec.name:gsub("[%s,]", "")
 	city.Parent = parent
 
-	local stone = path.primaryColor
-	local accent = path.accentColor
-	local roofColor = ROOF_COLORS[spec.pathId] or Color3.fromRGB(45, 42, 44)
-	local half = PLAZA / 2
+	-- The gate faces the mountain (map origin); for the central city it
+	-- faces the southern pass.
+	local toCenter = if spec.key == "central"
+		then Vector3.new(0, 0, 1)
+		else (Vector3.new(-center.X, 0, -center.Z)).Unit
+	local gateAngle = math.atan2(toCenter.Z, toCenter.X)
 
-	-- Plaza floor.
-	BuildKit.part({
-		name = "Plaza",
-		size = Vector3.new(PLAZA, 1, PLAZA),
-		position = center + Vector3.new(0, 0.5, 0),
-		color = stone,
-		material = Enum.Material.Cobblestone,
-		parent = city,
-	})
+	-- Floor disc and walls.
+	BuildKit.cylinder(city, "Plaza", center + Vector3.new(0, 0.5, 0), 1, radius * 2, theme.floor, theme.floorMaterial)
+	ringWall(city, center, radius, 16, theme, gateAngle)
 
-	-- Walls with a gate on the mountain-facing side. Cities are axis-
-	-- aligned; the gate goes in whichever wall faces the mountain most.
-	local north = center.Z - half
-	local south = center.Z + half
-	local west = center.X - half
-	local east = center.X + half
-	local gateOnZ = math.abs(gateDir.Z) >= math.abs(gateDir.X)
-	local gateNorth = gateOnZ and gateDir.Z < 0
-	local gateSouth = gateOnZ and gateDir.Z >= 0
-	local gateWest = not gateOnZ and gateDir.X < 0
-	local gateEast = not gateOnZ and gateDir.X >= 0
+	-- Paifang at the gate.
+	local gatePos = center + toCenter * (radius + 10)
+	local sign = BuildKit.paifang(city, Vector3.new(gatePos.X, center.Y, gatePos.Z), toCenter, 34, TIMBER, theme.roof)
+	BuildKit.billboard(sign, `{spec.name}\n{spec.subtitle}`, spec.accent, 18, 3, Vector3.new(0, 4, 0))
 
-	BuildKit.wallX(city, "Wall_N", north, west, east, 0, WALL_HEIGHT, WALL_THICKNESS, stone, Enum.Material.Slate,
-		if gateNorth then center.X else nil, if gateNorth then GATE_WIDTH else nil)
-	BuildKit.wallX(city, "Wall_S", south, west, east, 0, WALL_HEIGHT, WALL_THICKNESS, stone, Enum.Material.Slate,
-		if gateSouth then center.X else nil, if gateSouth then GATE_WIDTH else nil)
-	BuildKit.wallZ(city, "Wall_W", west, north, south, 0, WALL_HEIGHT, WALL_THICKNESS, stone, Enum.Material.Slate,
-		if gateWest then center.Z else nil, if gateWest then GATE_WIDTH else nil)
-	BuildKit.wallZ(city, "Wall_E", east, north, south, 0, WALL_HEIGHT, WALL_THICKNESS, stone, Enum.Material.Slate,
-		if gateEast then center.Z else nil, if gateEast then GATE_WIDTH else nil)
+	-- Pagoda homes on an inner ring, skipping the gate and shrine bearings.
+	for index = 1, 8 do
+		local angle = index / 8 * math.pi * 2
+		local gateDelta = math.atan2(math.sin(angle - gateAngle), math.cos(angle - gateAngle))
+		if math.abs(gateDelta) < math.rad(30) or math.abs(gateDelta) > math.rad(150) then
+			continue
+		end
+		local homeCenter = center + Vector3.new(math.cos(angle) * radius * 0.62, 0, math.sin(angle) * radius * 0.62)
+		BuildKit.pagodaHouse(city, homeCenter, 22, 18, 2, theme.plaster, TIMBER, theme.roof)
+	end
 
-	-- Tiled coping caps the walls, with the same gate gaps.
-	BuildKit.wallX(city, "Coping_N", north, west - 1, east + 1, WALL_HEIGHT, 1.4, WALL_THICKNESS + 3, roofColor, Enum.Material.Slate,
-		if gateNorth then center.X else nil, if gateNorth then GATE_WIDTH else nil)
-	BuildKit.wallX(city, "Coping_S", south, west - 1, east + 1, WALL_HEIGHT, 1.4, WALL_THICKNESS + 3, roofColor, Enum.Material.Slate,
-		if gateSouth then center.X else nil, if gateSouth then GATE_WIDTH else nil)
-	BuildKit.wallZ(city, "Coping_W", west, north - 1, south + 1, WALL_HEIGHT, 1.4, WALL_THICKNESS + 3, roofColor, Enum.Material.Slate,
-		if gateWest then center.Z else nil, if gateWest then GATE_WIDTH else nil)
-	BuildKit.wallZ(city, "Coping_E", east, north - 1, south + 1, WALL_HEIGHT, 1.4, WALL_THICKNESS + 3, roofColor, Enum.Material.Slate,
-		if gateEast then center.Z else nil, if gateEast then GATE_WIDTH else nil)
+	-- Sect hall tower opposite the gate, shrine (or sign) before it.
+	local backDir = -toCenter
+	BuildKit.pagodaHouse(city, center + backDir * radius * 0.55, 22, 22, 3, theme.plaster, TIMBER, theme.roof)
 
-	-- Paifang arch standing just outside the gate opening.
-	local gateWallPos: Vector3
-	if gateNorth then
-		gateWallPos = Vector3.new(center.X, 0, north)
-	elseif gateSouth then
-		gateWallPos = Vector3.new(center.X, 0, south)
-	elseif gateWest then
-		gateWallPos = Vector3.new(west, 0, center.Z)
+	local shrinePos = center + backDir * radius * 0.22
+	if pathDef then
+		local dais = BuildKit.cylinder(city, "Shrine_Dais", shrinePos + Vector3.new(0, 1, 0), 2, 22, spec.accent, Enum.Material.Marble)
+		local monolith = BuildKit.part({
+			name = "Shrine",
+			size = Vector3.new(5, 13, 2.5),
+			position = shrinePos + Vector3.new(0, 8.5, 0),
+			color = theme.wall,
+			material = Enum.Material.Marble,
+			parent = city,
+		})
+		monolith:SetAttribute("PathId", spec.key)
+		CollectionService:AddTag(monolith, "PathShrine")
+		BuildKit.prompt(monolith, "Pledge", pathDef.name, 2, nil)
+		BuildKit.billboard(monolith, `Shrine of the {pathDef.name}\n"{pathDef.blurb}"`, spec.accent, 22, 3.4, Vector3.new(0, 9, 0))
+		BuildKit.pointLight(dais, spec.accent, 2, 30)
+		BuildKit.pavilion(city, shrinePos, 18, TIMBER, theme.roof)
 	else
-		gateWallPos = Vector3.new(east, 0, center.Z)
+		local waypost = BuildKit.part({
+			name = "Waypost",
+			size = Vector3.new(2, 10, 2),
+			position = shrinePos + Vector3.new(0, 5, 0),
+			color = TIMBER,
+			material = Enum.Material.Wood,
+			parent = city,
+		})
+		BuildKit.billboard(waypost, "Cloudrest, the free city. Three realms, three paths, one mountain.\nThe Deep Mines lie through the southern pass.", spec.accent, 24, 3, Vector3.new(0, 7, 0))
 	end
-	local sign = BuildKit.paifang(city, gateWallPos + gateDir * 12, gateDir, GATE_WIDTH + 6, TIMBER, roofColor)
-	BuildKit.billboard(sign, `{path.cityName}\n{path.name}`, accent, 18, 3, Vector3.new(0, 4, 0))
 
-	-- Pledge shrine at the back of the plaza (opposite the gate).
-	local shrinePos = center - gateDir * (half * 0.55)
-	local dais = BuildKit.cylinder(city, "Shrine_Dais", shrinePos + Vector3.new(0, 1, 0), 2, 22, accent, Enum.Material.Marble)
-	local monolith = BuildKit.part({
-		name = "Shrine",
-		size = Vector3.new(5, 13, 2.5),
-		position = shrinePos + Vector3.new(0, 8.5, 0),
-		color = stone,
-		material = Enum.Material.Marble,
-		parent = city,
-	})
-	monolith:SetAttribute("PathId", spec.pathId)
-	CollectionService:AddTag(monolith, "PathShrine")
-	BuildKit.prompt(monolith, "Pledge", path.name, 2, nil)
-	BuildKit.billboard(monolith, `Shrine of the {path.name}\n"{path.blurb}"`, accent, 22, 3.4, Vector3.new(0, 9, 0))
-	BuildKit.pointLight(dais, accent, 2, 30)
-	BuildKit.pavilion(city, shrinePos, 18, TIMBER, roofColor)
+	-- Spawn, lanterns, sanctuary, and gate dummies.
+	local spawnColor = if pathDef then pathDef.teamBrickColor else "Medium stone grey"
+	BuildKit.spawnLocation(city, shrinePos + toCenter * 18 + Vector3.new(0, 1, 0), spawnColor, false)
 
-	-- Team spawn beside the shrine.
-	BuildKit.spawnLocation(city, shrinePos + gateDir * 18 + Vector3.new(0, 1, 0), path.teamBrickColor, false)
-
-	-- Pagoda homes in the plaza corners: two-story, tiled, timber-framed.
-	for cx = -1, 1, 2 do
-		for cz = -1, 1, 2 do
-			local homeCenter = center + Vector3.new(cx * half * 0.6, 0, cz * half * 0.6)
-			-- Skip the corner the shrine sits nearest.
-			if (homeCenter - shrinePos).Magnitude < 30 then
-				continue
-			end
-			BuildKit.pagodaHouse(city, homeCenter, 24, 20, 2, PLASTER, TIMBER, roofColor)
-		end
-	end
-	-- One taller tower opposite the shrine: the sect hall.
-	BuildKit.pagodaHouse(city, center + gateDir * (half * 0.28) + Vector3.new(0, 0, 0), 20, 20, 3, PLASTER, TIMBER, roofColor)
-
-	-- Red lanterns at the plaza corners; every Chinese city street has them.
 	local lanternRed = Color3.fromRGB(210, 60, 45)
-	for cx = -1, 1, 2 do
-		for cz = -1, 1, 2 do
-			local post = BuildKit.part({
-				name = "Lantern",
-				size = Vector3.new(1, 11, 1),
-				position = center + Vector3.new(cx * (half - 8), 5.5, cz * (half - 8)),
-				color = TIMBER,
-				material = Enum.Material.Wood,
-				parent = city,
-			})
-			local lamp = BuildKit.part({
-				name = "Lantern_Light",
-				size = Vector3.new(2.2, 2.8, 2.2),
-				position = post.Position + Vector3.new(0, 6.5, 0),
-				color = lanternRed,
-				material = Enum.Material.Neon,
-				canCollide = false,
-				parent = city,
-			})
-			BuildKit.pointLight(lamp, Color3.fromRGB(255, 150, 110), 1.6, 26)
-		end
+	for index = 1, 6 do
+		local angle = index / 6 * math.pi * 2 + 0.3
+		local post = BuildKit.part({
+			name = "Lantern",
+			size = Vector3.new(1, 11, 1),
+			position = center + Vector3.new(math.cos(angle) * radius * 0.86, 5.5, math.sin(angle) * radius * 0.86),
+			color = TIMBER,
+			material = Enum.Material.Wood,
+			parent = city,
+		})
+		local lamp = BuildKit.part({
+			name = "Lantern_Light",
+			size = Vector3.new(2.2, 2.8, 2.2),
+			position = post.Position + Vector3.new(0, 6.5, 0),
+			color = lanternRed,
+			material = Enum.Material.Neon,
+			canCollide = false,
+			parent = city,
+		})
+		BuildKit.pointLight(lamp, Color3.fromRGB(255, 150, 110), 1.6, 26)
 	end
 
-	-- The whole city is sanctuary.
-	BuildKit.safeZone(city, center, PLAZA * 0.75)
+	BuildKit.safeZone(city, center, radius * 1.05)
 
-	-- Training dummies outside the gate, toward the mountain.
-	local gatePos = center + gateDir * (half + 14)
 	for i = -1, 1 do
-		local side = Vector3.new(-gateDir.Z, 0, gateDir.X) -- perpendicular
-		BuildKit.trainingDummy(city, gatePos + side * (i * 12) + gateDir * 16)
+		local side = Vector3.new(-toCenter.Z, 0, toCenter.X)
+		BuildKit.trainingDummy(city, Vector3.new(gatePos.X, center.Y, gatePos.Z) + side * (i * 12) + toCenter * 18)
 	end
 end
 
 function Cities.build(parent: Instance)
-	for _, spec in SPECS do
+	local specs: { CitySpec } = {
+		{
+			key = "orthodox",
+			radius = 95,
+			name = Paths.orthodox.cityName,
+			subtitle = Paths.orthodox.name,
+			accent = Paths.orthodox.accentColor,
+		},
+		{
+			key = "demonic",
+			radius = 95,
+			name = Paths.demonic.cityName,
+			subtitle = Paths.demonic.name,
+			accent = Paths.demonic.accentColor,
+		},
+		{
+			key = "unorthodox",
+			radius = 95,
+			name = Paths.unorthodox.cityName,
+			subtitle = Paths.unorthodox.name,
+			accent = Paths.unorthodox.accentColor,
+		},
+		{
+			key = "central",
+			radius = 105,
+			name = "Cloudrest",
+			subtitle = "The Free City",
+			accent = Color3.fromRGB(235, 230, 215),
+		},
+	}
+	for _, spec in specs do
 		buildCity(parent, spec)
 	end
 end

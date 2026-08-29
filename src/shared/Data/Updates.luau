@@ -13,6 +13,18 @@ export type UpdateEntry = {
 
 local Updates: { UpdateEntry } = {
 	{
+		version = "0.4.0",
+		date = "2026-08-29",
+		title = "The Island of Three Realms",
+		notes = {
+			"The world is now a true island, sculpted from terrain: snow in the north, desert in the southwest, forest to the east and south, ocean all around.",
+			"Real mountains: a ring of jagged peaks hides the crater city of Cloudrest, where you now begin. The Deep Mines lie through the southern pass.",
+			"A waterfall pours from the north peak, crowned by a dark pagoda.",
+			"Circular ring-walled cities in every realm, rivers with bridges, offshore islets, and a web of roads.",
+			"HUD reworked: health, qi and stamina bars by the hotbar, a breakthrough orb in its center colored by your path, and the menu moved to the top right, all in English.",
+		},
+	},
+	{
 		version = "0.3.0",
 		date = "2026-08-29",
 		title = "Sects, Lineage & Mastery",

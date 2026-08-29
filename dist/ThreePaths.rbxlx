@@ -1510,6 +1510,18 @@ export type UpdateEntry = {
 
 local Updates: { UpdateEntry } = {
 	{
+		version = "0.4.0",
+		date = "2026-08-29",
+		title = "The Island of Three Realms",
+		notes = {
+			"The world is now a true island, sculpted from terrain: snow in the north, desert in the southwest, forest to the east and south, ocean all around.",
+			"Real mountains: a ring of jagged peaks hides the crater city of Cloudrest, where you now begin. The Deep Mines lie through the southern pass.",
+			"A waterfall pours from the north peak, crowned by a dark pagoda.",
+			"Circular ring-walled cities in every realm, rivers with bridges, offshore islets, and a web of roads.",
+			"HUD reworked: health, qi and stamina bars by the hotbar, a breakthrough orb in its center colored by your path, and the menu moved to the top right, all in English.",
+		},
+	},
+	{
 		version = "0.3.0",
 		date = "2026-08-29",
 		title = "Sects, Lineage & Mastery",
@@ -5611,10 +5623,11 @@ return BuildKit
               <string name="Name">Cities</string>
               <string name="Source"><![CDATA[--!strict
 -- ModuleScript: ServerScriptService > Server > Systems > World > Cities
--- The three path cities, ringed around Heavenpillar Mountain: White Cloud
--- City (orthodox, north), Freewind City (unorthodox, southeast), Blackfire
--- City (demonic, southwest). Each is a walled plaza with a pledge shrine,
--- team spawn, homes, lanterns and training dummies outside the gate.
+-- The four cities of the island, laid out like the reference map: circular
+-- ring-walled cities, one per biome realm plus the neutral city inside the
+-- mountain crater. White Cloud City in the snow (orthodox, north),
+-- Blackfire City in the desert (demonic, southwest), Freewind City in the
+-- forest (unorthodox, east), and Cloudrest, the free city, in the crater.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CollectionService = game:GetService("CollectionService")
@@ -5623,181 +5636,242 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Paths = require(Shared:WaitForChild("Data"):WaitForChild("Paths"))
 
 local BuildKit = require(script.Parent.BuildKit)
+local Island = require(script.Parent.Island)
 
 local Cities = {}
 
-local CITY_RADIUS = 380
-local PLAZA = 150 -- plaza edge length
-local WALL_HEIGHT = 20
-local WALL_THICKNESS = 4
-local GATE_WIDTH = 30
+-- City centers (ground level unless noted). Flora and roads read these.
+Cities.POSITIONS = table.freeze({
+	orthodox = Vector3.new(0, 0, -640),
+	demonic = Vector3.new(-600, 0, 330),
+	unorthodox = Vector3.new(620, 0, 240),
+	central = Vector3.new(0, Island.VALLEY_Y, 0),
+})
 
-local PLASTER = Color3.fromRGB(238, 231, 214)
 local TIMBER = Color3.fromRGB(74, 53, 39)
 
--- Dark tiled roofs, tinted per path so each city reads at a glance.
-local ROOF_COLORS: { [string]: Color3 } = {
-	orthodox = Color3.fromRGB(58, 74, 92),
-	unorthodox = Color3.fromRGB(52, 73, 59),
-	demonic = Color3.fromRGB(38, 30, 32),
+type CityTheme = {
+	wall: Color3,
+	wallMaterial: Enum.Material,
+	roof: Color3,
+	plaster: Color3,
+	floor: Color3,
+	floorMaterial: Enum.Material,
 }
+
+-- Palettes from the texture guide: white/stone/black tile for snow, sand
+-- and red tile for desert, white stone and green tile for the forest city.
+local THEMES: { [string]: CityTheme } = {
+	orthodox = {
+		wall = Color3.fromRGB(212, 216, 222),
+		wallMaterial = Enum.Material.Slate,
+		roof = Color3.fromRGB(43, 43, 50), -- tile roof black
+		plaster = Color3.fromRGB(240, 240, 238),
+		floor = Color3.fromRGB(198, 202, 210),
+		floorMaterial = Enum.Material.Slate,
+	},
+	demonic = {
+		wall = Color3.fromRGB(196, 156, 108),
+		wallMaterial = Enum.Material.Sandstone,
+		roof = Color3.fromRGB(143, 59, 46), -- tile roof red
+		plaster = Color3.fromRGB(222, 191, 143),
+		floor = Color3.fromRGB(186, 152, 105),
+		floorMaterial = Enum.Material.Sandstone,
+	},
+	unorthodox = {
+		wall = Color3.fromRGB(226, 222, 210),
+		wallMaterial = Enum.Material.Slate,
+		roof = Color3.fromRGB(61, 90, 62), -- tile roof green
+		plaster = Color3.fromRGB(237, 234, 224),
+		floor = Color3.fromRGB(206, 202, 190),
+		floorMaterial = Enum.Material.Cobblestone,
+	},
+	central = {
+		wall = Color3.fromRGB(184, 180, 172),
+		wallMaterial = Enum.Material.Slate,
+		roof = Color3.fromRGB(74, 85, 96), -- slate blue
+		plaster = Color3.fromRGB(238, 231, 214),
+		floor = Color3.fromRGB(180, 174, 160),
+		floorMaterial = Enum.Material.Cobblestone,
+	},
+}
+
+-- A circular rampart with a gate gap facing `gateAngle` (radians from +X).
+local function ringWall(parent: Instance, center: Vector3, radius: number, height: number, theme: CityTheme, gateAngle: number)
+	local segments = 22
+	local segmentLength = 2 * math.pi * radius / segments + 3
+	for index = 1, segments do
+		local angle = index / segments * math.pi * 2
+		local delta = math.atan2(math.sin(angle - gateAngle), math.cos(angle - gateAngle))
+		if math.abs(delta) < math.rad(16) then
+			continue -- the gate opening
+		end
+		local position = center + Vector3.new(math.cos(angle) * radius, height / 2, math.sin(angle) * radius)
+		local tangent = Vector3.new(-math.sin(angle), 0, math.cos(angle))
+		BuildKit.part({
+			name = "CityWall",
+			size = Vector3.new(4, height, segmentLength),
+			cframe = CFrame.lookAt(position, position + tangent),
+			color = theme.wall,
+			material = theme.wallMaterial,
+			parent = parent,
+		})
+		BuildKit.part({
+			name = "CityWall_Coping",
+			size = Vector3.new(7, 1.4, segmentLength + 1),
+			cframe = CFrame.lookAt(position + Vector3.new(0, height / 2 + 0.7, 0), position + Vector3.new(0, height / 2 + 0.7, 0) + tangent),
+			color = theme.roof,
+			material = Enum.Material.Slate,
+			parent = parent,
+		})
+	end
+end
 
 type CitySpec = {
-	pathId: string,
-	angle: number, -- degrees around the mountain, 0 = +Z (south)
-}
-
-local SPECS: { CitySpec } = {
-	{ pathId = "orthodox", angle = 180 }, -- north
-	{ pathId = "unorthodox", angle = 60 }, -- southeast
-	{ pathId = "demonic", angle = -60 }, -- southwest
+	key: string, -- into POSITIONS/THEMES; also a path id except "central"
+	radius: number,
+	name: string,
+	subtitle: string,
+	accent: Color3,
 }
 
 local function buildCity(parent: Instance, spec: CitySpec)
-	local path = Paths[spec.pathId]
-	local rad = math.rad(spec.angle)
-	local center = Vector3.new(math.sin(rad) * CITY_RADIUS, 0, math.cos(rad) * CITY_RADIUS)
-	-- The gate faces the mountain (map origin).
-	local toMountain = (Vector3.zero - center) * Vector3.new(1, 0, 1)
-	local gateDir = toMountain.Unit
+	local center = Cities.POSITIONS[spec.key]
+	local theme = THEMES[spec.key]
+	local pathDef = Paths[spec.key] -- nil for the central city
+	local radius = spec.radius
 
 	local city = Instance.new("Folder")
-	city.Name = path.cityName:gsub(" ", "")
+	city.Name = spec.name:gsub("[%s,]", "")
 	city.Parent = parent
 
-	local stone = path.primaryColor
-	local accent = path.accentColor
-	local roofColor = ROOF_COLORS[spec.pathId] or Color3.fromRGB(45, 42, 44)
-	local half = PLAZA / 2
+	-- The gate faces the mountain (map origin); for the central city it
+	-- faces the southern pass.
+	local toCenter = if spec.key == "central"
+		then Vector3.new(0, 0, 1)
+		else (Vector3.new(-center.X, 0, -center.Z)).Unit
+	local gateAngle = math.atan2(toCenter.Z, toCenter.X)
 
-	-- Plaza floor.
-	BuildKit.part({
-		name = "Plaza",
-		size = Vector3.new(PLAZA, 1, PLAZA),
-		position = center + Vector3.new(0, 0.5, 0),
-		color = stone,
-		material = Enum.Material.Cobblestone,
-		parent = city,
-	})
+	-- Floor disc and walls.
+	BuildKit.cylinder(city, "Plaza", center + Vector3.new(0, 0.5, 0), 1, radius * 2, theme.floor, theme.floorMaterial)
+	ringWall(city, center, radius, 16, theme, gateAngle)
 
-	-- Walls with a gate on the mountain-facing side. Cities are axis-
-	-- aligned; the gate goes in whichever wall faces the mountain most.
-	local north = center.Z - half
-	local south = center.Z + half
-	local west = center.X - half
-	local east = center.X + half
-	local gateOnZ = math.abs(gateDir.Z) >= math.abs(gateDir.X)
-	local gateNorth = gateOnZ and gateDir.Z < 0
-	local gateSouth = gateOnZ and gateDir.Z >= 0
-	local gateWest = not gateOnZ and gateDir.X < 0
-	local gateEast = not gateOnZ and gateDir.X >= 0
+	-- Paifang at the gate.
+	local gatePos = center + toCenter * (radius + 10)
+	local sign = BuildKit.paifang(city, Vector3.new(gatePos.X, center.Y, gatePos.Z), toCenter, 34, TIMBER, theme.roof)
+	BuildKit.billboard(sign, `{spec.name}\n{spec.subtitle}`, spec.accent, 18, 3, Vector3.new(0, 4, 0))
 
-	BuildKit.wallX(city, "Wall_N", north, west, east, 0, WALL_HEIGHT, WALL_THICKNESS, stone, Enum.Material.Slate,
-		if gateNorth then center.X else nil, if gateNorth then GATE_WIDTH else nil)
-	BuildKit.wallX(city, "Wall_S", south, west, east, 0, WALL_HEIGHT, WALL_THICKNESS, stone, Enum.Material.Slate,
-		if gateSouth then center.X else nil, if gateSouth then GATE_WIDTH else nil)
-	BuildKit.wallZ(city, "Wall_W", west, north, south, 0, WALL_HEIGHT, WALL_THICKNESS, stone, Enum.Material.Slate,
-		if gateWest then center.Z else nil, if gateWest then GATE_WIDTH else nil)
-	BuildKit.wallZ(city, "Wall_E", east, north, south, 0, WALL_HEIGHT, WALL_THICKNESS, stone, Enum.Material.Slate,
-		if gateEast then center.Z else nil, if gateEast then GATE_WIDTH else nil)
+	-- Pagoda homes on an inner ring, skipping the gate and shrine bearings.
+	for index = 1, 8 do
+		local angle = index / 8 * math.pi * 2
+		local gateDelta = math.atan2(math.sin(angle - gateAngle), math.cos(angle - gateAngle))
+		if math.abs(gateDelta) < math.rad(30) or math.abs(gateDelta) > math.rad(150) then
+			continue
+		end
+		local homeCenter = center + Vector3.new(math.cos(angle) * radius * 0.62, 0, math.sin(angle) * radius * 0.62)
+		BuildKit.pagodaHouse(city, homeCenter, 22, 18, 2, theme.plaster, TIMBER, theme.roof)
+	end
 
-	-- Tiled coping caps the walls, with the same gate gaps.
-	BuildKit.wallX(city, "Coping_N", north, west - 1, east + 1, WALL_HEIGHT, 1.4, WALL_THICKNESS + 3, roofColor, Enum.Material.Slate,
-		if gateNorth then center.X else nil, if gateNorth then GATE_WIDTH else nil)
-	BuildKit.wallX(city, "Coping_S", south, west - 1, east + 1, WALL_HEIGHT, 1.4, WALL_THICKNESS + 3, roofColor, Enum.Material.Slate,
-		if gateSouth then center.X else nil, if gateSouth then GATE_WIDTH else nil)
-	BuildKit.wallZ(city, "Coping_W", west, north - 1, south + 1, WALL_HEIGHT, 1.4, WALL_THICKNESS + 3, roofColor, Enum.Material.Slate,
-		if gateWest then center.Z else nil, if gateWest then GATE_WIDTH else nil)
-	BuildKit.wallZ(city, "Coping_E", east, north - 1, south + 1, WALL_HEIGHT, 1.4, WALL_THICKNESS + 3, roofColor, Enum.Material.Slate,
-		if gateEast then center.Z else nil, if gateEast then GATE_WIDTH else nil)
+	-- Sect hall tower opposite the gate, shrine (or sign) before it.
+	local backDir = -toCenter
+	BuildKit.pagodaHouse(city, center + backDir * radius * 0.55, 22, 22, 3, theme.plaster, TIMBER, theme.roof)
 
-	-- Paifang arch standing just outside the gate opening.
-	local gateWallPos: Vector3
-	if gateNorth then
-		gateWallPos = Vector3.new(center.X, 0, north)
-	elseif gateSouth then
-		gateWallPos = Vector3.new(center.X, 0, south)
-	elseif gateWest then
-		gateWallPos = Vector3.new(west, 0, center.Z)
+	local shrinePos = center + backDir * radius * 0.22
+	if pathDef then
+		local dais = BuildKit.cylinder(city, "Shrine_Dais", shrinePos + Vector3.new(0, 1, 0), 2, 22, spec.accent, Enum.Material.Marble)
+		local monolith = BuildKit.part({
+			name = "Shrine",
+			size = Vector3.new(5, 13, 2.5),
+			position = shrinePos + Vector3.new(0, 8.5, 0),
+			color = theme.wall,
+			material = Enum.Material.Marble,
+			parent = city,
+		})
+		monolith:SetAttribute("PathId", spec.key)
+		CollectionService:AddTag(monolith, "PathShrine")
+		BuildKit.prompt(monolith, "Pledge", pathDef.name, 2, nil)
+		BuildKit.billboard(monolith, `Shrine of the {pathDef.name}\n"{pathDef.blurb}"`, spec.accent, 22, 3.4, Vector3.new(0, 9, 0))
+		BuildKit.pointLight(dais, spec.accent, 2, 30)
+		BuildKit.pavilion(city, shrinePos, 18, TIMBER, theme.roof)
 	else
-		gateWallPos = Vector3.new(east, 0, center.Z)
+		local waypost = BuildKit.part({
+			name = "Waypost",
+			size = Vector3.new(2, 10, 2),
+			position = shrinePos + Vector3.new(0, 5, 0),
+			color = TIMBER,
+			material = Enum.Material.Wood,
+			parent = city,
+		})
+		BuildKit.billboard(waypost, "Cloudrest, the free city. Three realms, three paths, one mountain.\nThe Deep Mines lie through the southern pass.", spec.accent, 24, 3, Vector3.new(0, 7, 0))
 	end
-	local sign = BuildKit.paifang(city, gateWallPos + gateDir * 12, gateDir, GATE_WIDTH + 6, TIMBER, roofColor)
-	BuildKit.billboard(sign, `{path.cityName}\n{path.name}`, accent, 18, 3, Vector3.new(0, 4, 0))
 
-	-- Pledge shrine at the back of the plaza (opposite the gate).
-	local shrinePos = center - gateDir * (half * 0.55)
-	local dais = BuildKit.cylinder(city, "Shrine_Dais", shrinePos + Vector3.new(0, 1, 0), 2, 22, accent, Enum.Material.Marble)
-	local monolith = BuildKit.part({
-		name = "Shrine",
-		size = Vector3.new(5, 13, 2.5),
-		position = shrinePos + Vector3.new(0, 8.5, 0),
-		color = stone,
-		material = Enum.Material.Marble,
-		parent = city,
-	})
-	monolith:SetAttribute("PathId", spec.pathId)
-	CollectionService:AddTag(monolith, "PathShrine")
-	BuildKit.prompt(monolith, "Pledge", path.name, 2, nil)
-	BuildKit.billboard(monolith, `Shrine of the {path.name}\n"{path.blurb}"`, accent, 22, 3.4, Vector3.new(0, 9, 0))
-	BuildKit.pointLight(dais, accent, 2, 30)
-	BuildKit.pavilion(city, shrinePos, 18, TIMBER, roofColor)
+	-- Spawn, lanterns, sanctuary, and gate dummies.
+	local spawnColor = if pathDef then pathDef.teamBrickColor else "Medium stone grey"
+	BuildKit.spawnLocation(city, shrinePos + toCenter * 18 + Vector3.new(0, 1, 0), spawnColor, false)
 
-	-- Team spawn beside the shrine.
-	BuildKit.spawnLocation(city, shrinePos + gateDir * 18 + Vector3.new(0, 1, 0), path.teamBrickColor, false)
-
-	-- Pagoda homes in the plaza corners: two-story, tiled, timber-framed.
-	for cx = -1, 1, 2 do
-		for cz = -1, 1, 2 do
-			local homeCenter = center + Vector3.new(cx * half * 0.6, 0, cz * half * 0.6)
-			-- Skip the corner the shrine sits nearest.
-			if (homeCenter - shrinePos).Magnitude < 30 then
-				continue
-			end
-			BuildKit.pagodaHouse(city, homeCenter, 24, 20, 2, PLASTER, TIMBER, roofColor)
-		end
-	end
-	-- One taller tower opposite the shrine: the sect hall.
-	BuildKit.pagodaHouse(city, center + gateDir * (half * 0.28) + Vector3.new(0, 0, 0), 20, 20, 3, PLASTER, TIMBER, roofColor)
-
-	-- Red lanterns at the plaza corners; every Chinese city street has them.
 	local lanternRed = Color3.fromRGB(210, 60, 45)
-	for cx = -1, 1, 2 do
-		for cz = -1, 1, 2 do
-			local post = BuildKit.part({
-				name = "Lantern",
-				size = Vector3.new(1, 11, 1),
-				position = center + Vector3.new(cx * (half - 8), 5.5, cz * (half - 8)),
-				color = TIMBER,
-				material = Enum.Material.Wood,
-				parent = city,
-			})
-			local lamp = BuildKit.part({
-				name = "Lantern_Light",
-				size = Vector3.new(2.2, 2.8, 2.2),
-				position = post.Position + Vector3.new(0, 6.5, 0),
-				color = lanternRed,
-				material = Enum.Material.Neon,
-				canCollide = false,
-				parent = city,
-			})
-			BuildKit.pointLight(lamp, Color3.fromRGB(255, 150, 110), 1.6, 26)
-		end
+	for index = 1, 6 do
+		local angle = index / 6 * math.pi * 2 + 0.3
+		local post = BuildKit.part({
+			name = "Lantern",
+			size = Vector3.new(1, 11, 1),
+			position = center + Vector3.new(math.cos(angle) * radius * 0.86, 5.5, math.sin(angle) * radius * 0.86),
+			color = TIMBER,
+			material = Enum.Material.Wood,
+			parent = city,
+		})
+		local lamp = BuildKit.part({
+			name = "Lantern_Light",
+			size = Vector3.new(2.2, 2.8, 2.2),
+			position = post.Position + Vector3.new(0, 6.5, 0),
+			color = lanternRed,
+			material = Enum.Material.Neon,
+			canCollide = false,
+			parent = city,
+		})
+		BuildKit.pointLight(lamp, Color3.fromRGB(255, 150, 110), 1.6, 26)
 	end
 
-	-- The whole city is sanctuary.
-	BuildKit.safeZone(city, center, PLAZA * 0.75)
+	BuildKit.safeZone(city, center, radius * 1.05)
 
-	-- Training dummies outside the gate, toward the mountain.
-	local gatePos = center + gateDir * (half + 14)
 	for i = -1, 1 do
-		local side = Vector3.new(-gateDir.Z, 0, gateDir.X) -- perpendicular
-		BuildKit.trainingDummy(city, gatePos + side * (i * 12) + gateDir * 16)
+		local side = Vector3.new(-toCenter.Z, 0, toCenter.X)
+		BuildKit.trainingDummy(city, Vector3.new(gatePos.X, center.Y, gatePos.Z) + side * (i * 12) + toCenter * 18)
 	end
 end
 
 function Cities.build(parent: Instance)
-	for _, spec in SPECS do
+	local specs: { CitySpec } = {
+		{
+			key = "orthodox",
+			radius = 95,
+			name = Paths.orthodox.cityName,
+			subtitle = Paths.orthodox.name,
+			accent = Paths.orthodox.accentColor,
+		},
+		{
+			key = "demonic",
+			radius = 95,
+			name = Paths.demonic.cityName,
+			subtitle = Paths.demonic.name,
+			accent = Paths.demonic.accentColor,
+		},
+		{
+			key = "unorthodox",
+			radius = 95,
+			name = Paths.unorthodox.cityName,
+			subtitle = Paths.unorthodox.name,
+			accent = Paths.unorthodox.accentColor,
+		},
+		{
+			key = "central",
+			radius = 105,
+			name = "Cloudrest",
+			subtitle = "The Free City",
+			accent = Color3.fromRGB(235, 230, 215),
+		},
+	}
+	for _, spec in specs do
 		buildCity(parent, spec)
 	end
 end
@@ -5808,157 +5882,29 @@ return Cities
           </Item>
           <Item class="ModuleScript" referent="36">
             <Properties>
-              <string name="Name">Overworld</string>
+              <string name="Name">Flora</string>
               <string name="Source"><![CDATA[--!strict
--- ModuleScript: ServerScriptService > Server > Systems > World > Overworld
--- The surface: ground plane (with the mine-shaft hole), Heavenpillar
--- Mountain with its climbing ramps and summit platform, the wanderer spawn,
--- scattered blossom trees, and the sky's mood (Atmosphere).
-
-local Lighting = game:GetService("Lighting")
+-- ModuleScript: ServerScriptService > Server > Systems > World > Flora
+-- Biome vegetation and rocks, scattered to match the reference: snowy
+-- pines in the white north, cacti and dry scrub in the desert, mixed
+-- pine/blossom/bamboo through the green realm. Keeps clear of the
+-- mountain ring, the cities, and the coast.
 
 local BuildKit = require(script.Parent.BuildKit)
+local Island = require(script.Parent.Island)
+local Cities = require(script.Parent.Cities)
 
-local Overworld = {}
+local Flora = {}
 
--- Shared layout constants (Underworld builds against the same hole).
-Overworld.GROUND_TOP = 0
-Overworld.HOLE = { x1 = -15, x2 = 15, z1 = 240, z2 = 300 } -- mine shaft opening
-Overworld.MAP_HALF = 1024
+local TRUNK = Color3.fromRGB(92, 70, 52)
+local PINE_GREEN = Color3.fromRGB(52, 84, 60)
+local PINE_DARK = Color3.fromRGB(40, 66, 48)
+local SNOW_WHITE = Color3.fromRGB(238, 242, 246)
+local BLOSSOM_PINK = Color3.fromRGB(240, 184, 205)
+local BLOSSOM_WHITE = Color3.fromRGB(246, 238, 230)
+local BAMBOO_GREEN = Color3.fromRGB(126, 168, 92)
+local CACTUS_GREEN = Color3.fromRGB(96, 142, 74)
 
-local GROUND_THICKNESS = 16
-local GRASS = Color3.fromRGB(96, 140, 84)
-local ROCK = Color3.fromRGB(116, 110, 108)
-local ROCK_DARK = Color3.fromRGB(92, 88, 90)
-
-local TIERS = {
-	{ radius = 220, height = 45 },
-	{ radius = 185, height = 45 },
-	{ radius = 150, height = 45 },
-	{ radius = 115, height = 45 },
-	{ radius = 80, height = 45 },
-	{ radius = 50, height = 45 },
-}
-
-local function buildGround(parent: Instance)
-	local hole = Overworld.HOLE
-	local half = Overworld.MAP_HALF
-	local y = Overworld.GROUND_TOP - GROUND_THICKNESS / 2
-	local function slab(name: string, x1: number, x2: number, z1: number, z2: number)
-		BuildKit.part({
-			name = name,
-			size = Vector3.new(x2 - x1, GROUND_THICKNESS, z2 - z1),
-			position = Vector3.new((x1 + x2) / 2, y, (z1 + z2) / 2),
-			color = GRASS,
-			material = Enum.Material.Grass,
-			parent = parent,
-		})
-	end
-	-- Four slabs around the mine-shaft hole.
-	slab("Ground_North", -half, half, -half, hole.z1)
-	slab("Ground_South", -half, half, hole.z2, half)
-	slab("Ground_West", -half, hole.x1, hole.z1, hole.z2)
-	slab("Ground_East", hole.x2, half, hole.z1, hole.z2)
-end
-
-local function buildMountain(parent: Instance)
-	local y = Overworld.GROUND_TOP
-	for index, tier in TIERS do
-		BuildKit.cylinder(
-			parent,
-			`Mountain_Tier{index}`,
-			Vector3.new(0, y + tier.height / 2, 0),
-			tier.height,
-			tier.radius * 2,
-			if index % 2 == 0 then ROCK_DARK else ROCK,
-			Enum.Material.Slate
-		)
-		y += tier.height
-	end
-
-	-- Climbing ramps, alternating around the mountain so the ascent is a
-	-- walk, not a wall. Ramp i runs from just outside tier i's radius (on
-	-- the surface below) up onto tier i's top.
-	local base = Overworld.GROUND_TOP
-	for index, tier in TIERS do
-		local angle = math.rad(150 + index * 137)
-		local dir = Vector3.new(math.cos(angle), 0, math.sin(angle))
-		local outer = dir * (tier.radius + 24)
-		local inner = dir * (tier.radius - 24)
-		local from = Vector3.new(outer.X, base, outer.Z)
-		local to = Vector3.new(inner.X, base + tier.height, inner.Z)
-		local mid = (from + to) / 2
-		local length = (to - from).Magnitude + 10
-		BuildKit.part({
-			name = `Mountain_Ramp{index}`,
-			size = Vector3.new(14, 2, length),
-			cframe = CFrame.lookAt(mid, to),
-			color = ROCK,
-			material = Enum.Material.Cobblestone,
-			parent = parent,
-		})
-		base += tier.height
-	end
-
-	-- Summit meditation platform.
-	local summitY = base
-	local disc = BuildKit.cylinder(parent, "Summit_Platform", Vector3.new(0, summitY + 0.5, 0), 1, 60, Color3.fromRGB(210, 205, 190), Enum.Material.Marble)
-	BuildKit.billboard(disc, "Summit of Heavenpillar. Meditate here, above the clouds.", Color3.fromRGB(255, 235, 180), 16, 1.6, Vector3.new(0, 8, 0))
-	for i = 1, 6 do
-		local angle = i * math.pi / 3
-		local pillar = BuildKit.part({
-			name = "Summit_Pillar",
-			size = Vector3.new(2, 9, 2),
-			position = Vector3.new(math.cos(angle) * 26, summitY + 4.5, math.sin(angle) * 26),
-			color = Color3.fromRGB(190, 60, 55),
-			material = Enum.Material.SmoothPlastic,
-			parent = parent,
-		})
-		BuildKit.pointLight(pillar, Color3.fromRGB(255, 200, 120), 1.5, 24)
-	end
-end
-
-local function buildMineEntrance(parent: Instance)
-	local hole = Overworld.HOLE
-	-- Stone gate arch on the surface at the shaft's north lip.
-	local gateZ = hole.z1 - 2
-	BuildKit.part({
-		name = "MineGate_PillarWest",
-		size = Vector3.new(4, 18, 4),
-		position = Vector3.new(hole.x1 - 2, 9, gateZ),
-		color = ROCK_DARK,
-		material = Enum.Material.Slate,
-		parent = parent,
-	})
-	BuildKit.part({
-		name = "MineGate_PillarEast",
-		size = Vector3.new(4, 18, 4),
-		position = Vector3.new(hole.x2 + 2, 9, gateZ),
-		color = ROCK_DARK,
-		material = Enum.Material.Slate,
-		parent = parent,
-	})
-	local lintel = BuildKit.part({
-		name = "MineGate_Lintel",
-		size = Vector3.new((hole.x2 - hole.x1) + 12, 4, 5),
-		position = Vector3.new(0, 20, gateZ),
-		color = ROCK_DARK,
-		material = Enum.Material.Slate,
-		parent = parent,
-	})
-	BuildKit.billboard(lintel, "The Deep Mines of Heavenpillar", Color3.fromRGB(190, 220, 255), 14, 1.6, Vector3.new(0, 3, 0))
-end
-
-local function buildWandererSpawn(parent: Instance)
-	local position = Vector3.new(0, Overworld.GROUND_TOP, 170)
-	local plaza = BuildKit.cylinder(parent, "Wanderer_Plaza", position + Vector3.new(0, 0.25, 0), 0.5, 56, Color3.fromRGB(180, 174, 160), Enum.Material.Cobblestone)
-	BuildKit.spawnLocation(parent, position + Vector3.new(0, 1, 0), "Medium stone grey", false)
-	BuildKit.safeZone(parent, position, 40)
-	BuildKit.billboard(plaza, "Wayfarer's Rest. Three cities, three paths. Choose with care; a dao is for life.", Color3.fromRGB(235, 230, 215), 20, 2, Vector3.new(0, 10, 0))
-end
-
--- A soft foliage puff: a part carrying a sphere mesh so it can be scaled
--- into an ellipsoid (Ball-shaped Parts cannot).
 local function puff(parent: Instance, position: Vector3, size: Vector3, color: Color3)
 	local part = BuildKit.part({
 		name = "Foliage",
@@ -5975,17 +5921,9 @@ local function puff(parent: Instance, position: Vector3, size: Vector3, color: C
 	mesh.Parent = part
 end
 
-local TRUNK = Color3.fromRGB(92, 70, 52)
-local PINE_GREEN = Color3.fromRGB(52, 84, 60)
-local PINE_DARK = Color3.fromRGB(40, 66, 48)
-local BLOSSOM_PINK = Color3.fromRGB(240, 184, 205)
-local BLOSSOM_WHITE = Color3.fromRGB(246, 238, 230)
-local BAMBOO_GREEN = Color3.fromRGB(126, 168, 92)
-
--- Ink-painting pine: a leaning trunk with flat, layered canopy discs.
-local function pineTree(parent: Instance, position: Vector3, rng: Random)
+local function pineTree(parent: Instance, position: Vector3, rng: Random, snowy: boolean)
 	local height = rng:NextNumber(14, 22)
-	local lean = rng:NextNumber(-0.09, 0.09)
+	local lean = rng:NextNumber(-0.08, 0.08)
 	BuildKit.part({
 		name = "Pine_Trunk",
 		size = Vector3.new(1.8, height, 1.8),
@@ -5999,19 +5937,20 @@ local function pineTree(parent: Instance, position: Vector3, rng: Random)
 		local t = (layer - 1) / layers
 		local layerY = position.Y + height * (0.5 + 0.55 * t)
 		local diameter = (14 - t * 8) * rng:NextNumber(0.9, 1.15)
-		BuildKit.cylinder(
-			parent,
-			"Pine_Canopy",
-			Vector3.new(position.X + lean * height * t * 6, layerY, position.Z + lean * height * t * 6),
-			1.4,
-			diameter,
-			if layer % 2 == 0 then PINE_DARK else PINE_GREEN,
-			Enum.Material.Grass
-		)
+		local color = if snowy and layer == layers
+			then SNOW_WHITE
+			elseif layer % 2 == 0 then PINE_DARK
+			else PINE_GREEN
+		BuildKit.cylinder(parent, "Pine_Canopy", Vector3.new(position.X, layerY, position.Z), 1.4, diameter,
+			color, if snowy and layer == layers then Enum.Material.Snow else Enum.Material.Grass)
+		if snowy and layer < layers then
+			-- Snow dusting on the lower boughs' rims.
+			BuildKit.cylinder(parent, "Pine_Snow", Vector3.new(position.X, layerY + 0.8, position.Z), 0.5, diameter * 0.8,
+				SNOW_WHITE, Enum.Material.Snow)
+		end
 	end
 end
 
--- Blossom tree: leaning trunk, clustered pink and white puffs.
 local function blossomTree(parent: Instance, position: Vector3, rng: Random)
 	local height = rng:NextNumber(10, 15)
 	local lean = rng:NextNumber(-0.14, 0.14)
@@ -6024,8 +5963,7 @@ local function blossomTree(parent: Instance, position: Vector3, rng: Random)
 		parent = parent,
 	})
 	local crown = position + Vector3.new(lean * height * 4, height, lean * height * 4)
-	local puffs = rng:NextInteger(4, 6)
-	for _ = 1, puffs do
+	for _ = 1, rng:NextInteger(4, 6) do
 		local offset = Vector3.new(rng:NextNumber(-5, 5), rng:NextNumber(-1, 4), rng:NextNumber(-5, 5))
 		local width = rng:NextNumber(6, 10)
 		puff(parent, crown + offset, Vector3.new(width, width * 0.65, width),
@@ -6033,12 +5971,10 @@ local function blossomTree(parent: Instance, position: Vector3, rng: Random)
 	end
 end
 
--- Bamboo clump: a handful of thin, tall culms with small leaf puffs.
 local function bambooClump(parent: Instance, position: Vector3, rng: Random)
 	for _ = 1, rng:NextInteger(5, 8) do
 		local culmHeight = rng:NextNumber(16, 26)
-		local offset = Vector3.new(rng:NextNumber(-4, 4), 0, rng:NextNumber(-4, 4))
-		local base = position + offset
+		local base = position + Vector3.new(rng:NextNumber(-4, 4), 0, rng:NextNumber(-4, 4))
 		BuildKit.part({
 			name = "Bamboo_Culm",
 			size = Vector3.new(0.7, culmHeight, 0.7),
@@ -6051,76 +5987,581 @@ local function bambooClump(parent: Instance, position: Vector3, rng: Random)
 	end
 end
 
-local function buildFlora(parent: Instance)
-	local rng = Random.new(7) -- deterministic: same forest every server
-	for _ = 1, 70 do
-		local angle = rng:NextNumber(0, math.pi * 2)
-		local radius = rng:NextNumber(460, 940)
-		local position = Vector3.new(math.cos(angle) * radius, Overworld.GROUND_TOP, math.sin(angle) * radius)
-		-- Southeast quadrant grows bamboo (Freewind country); elsewhere
-		-- pines dominate with blossoms scattered through.
-		if position.X > 120 and position.Z > 60 and rng:NextNumber() < 0.5 then
-			bambooClump(parent, position, rng)
-		elseif rng:NextNumber() < 0.35 then
-			blossomTree(parent, position, rng)
-		else
-			pineTree(parent, position, rng)
+local function cactus(parent: Instance, position: Vector3, rng: Random)
+	local height = rng:NextNumber(7, 13)
+	local body = BuildKit.part({
+		name = "Cactus",
+		size = Vector3.new(2.2, height, 2.2),
+		position = position + Vector3.new(0, height / 2, 0),
+		color = CACTUS_GREEN,
+		material = Enum.Material.Grass,
+		parent = parent,
+	})
+	for side = -1, 1, 2 do
+		if rng:NextNumber() < 0.7 then
+			local armY = rng:NextNumber(0.35, 0.6) * height
+			BuildKit.part({
+				name = "Cactus_Arm",
+				size = Vector3.new(1.4, 1.4, 3),
+				position = body.Position + Vector3.new(side * 2.4, armY - height / 2, 0),
+				color = CACTUS_GREEN,
+				material = Enum.Material.Grass,
+				canCollide = false,
+				parent = parent,
+			})
+			BuildKit.part({
+				name = "Cactus_ArmUp",
+				size = Vector3.new(1.4, 4, 1.4),
+				position = body.Position + Vector3.new(side * 3.2, armY - height / 2 + 2, 0),
+				color = CACTUS_GREEN,
+				material = Enum.Material.Grass,
+				canCollide = false,
+				parent = parent,
+			})
 		end
 	end
-	-- A few blossoms right around the Wayfarer's Rest for the first view.
-	for _ = 1, 5 do
-		local angle = rng:NextNumber(0, math.pi * 2)
-		blossomTree(parent, Vector3.new(math.cos(angle) * rng:NextNumber(45, 70), Overworld.GROUND_TOP, 170 + math.sin(angle) * rng:NextNumber(45, 70)), rng)
+end
+
+local function boulder(parent: Instance, position: Vector3, rng: Random, snowy: boolean)
+	local size = rng:NextNumber(3, 9)
+	BuildKit.part({
+		name = "Boulder",
+		size = Vector3.new(size, size * 0.7, size * rng:NextNumber(0.7, 1.3)),
+		cframe = CFrame.new(position + Vector3.new(0, size * 0.2, 0))
+			* CFrame.Angles(rng:NextNumber(0, 0.4), rng:NextNumber(0, math.pi), rng:NextNumber(0, 0.3)),
+		color = if snowy then Color3.fromRGB(205, 212, 220) else Color3.fromRGB(120, 116, 112),
+		material = Enum.Material.Slate,
+		parent = parent,
+	})
+end
+
+local function clearOfLandmarks(x: number, z: number): boolean
+	local distance = math.sqrt(x * x + z * z)
+	if distance < 270 or distance > 840 then
+		return false -- mountain ring / open sea
+	end
+	for _, center in Cities.POSITIONS :: { [string]: Vector3 } do
+		local dx = x - center.X
+		local dz = z - center.Z
+		if dx * dx + dz * dz < 140 * 140 then
+			return false
+		end
+	end
+	return true
+end
+
+function Flora.build(parent: Instance)
+	local rng = Random.new(7)
+	for _ = 1, 190 do
+		local theta = rng:NextNumber(-180, 180)
+		local distance = rng:NextNumber(280, 830)
+		local x = math.sin(math.rad(theta)) * distance
+		local z = -math.cos(math.rad(theta)) * distance
+		if not clearOfLandmarks(x, z) then
+			continue
+		end
+		local position = Vector3.new(x, 0, z)
+		local biome = Island.biomeAt(x, z)
+		local roll = rng:NextNumber()
+		if biome == "snow" then
+			if roll < 0.75 then
+				pineTree(parent, position, rng, true)
+			else
+				boulder(parent, position, rng, true)
+			end
+		elseif biome == "desert" then
+			if roll < 0.55 then
+				cactus(parent, position, rng)
+			elseif roll < 0.8 then
+				boulder(parent, position, rng, false)
+			else
+				pineTree(parent, position, rng, false) -- the odd hardy tree
+			end
+		else
+			if roll < 0.42 then
+				pineTree(parent, position, rng, false)
+			elseif roll < 0.68 then
+				blossomTree(parent, position, rng)
+			elseif roll < 0.85 then
+				bambooClump(parent, position, rng)
+			else
+				boulder(parent, position, rng, false)
+			end
+		end
+	end
+end
+
+return Flora
+]]></string>
+            </Properties>
+          </Item>
+          <Item class="ModuleScript" referent="37">
+            <Properties>
+              <string name="Name">Island</string>
+              <string name="Source"><![CDATA[--!strict
+-- ModuleScript: ServerScriptService > Server > Systems > World > Island
+-- The landmass, sculpted from voxel Terrain to match the reference map:
+-- one island in an ocean, three biome realms around a ring of jagged grey
+-- peaks (snow to the north, desert to the southwest, forest east and
+-- south), a hidden crater valley inside the ring with a waterfall pouring
+-- from the north peak, rivers on the green side, and offshore islets.
+--
+-- Everything is deterministic (seeded Random + math.noise), so every
+-- server builds the same island.
+
+local BuildKit = require(script.Parent.BuildKit)
+
+local Island = {}
+
+-- Shared layout facts other builders align to.
+Island.COAST_RADIUS = 900
+Island.VALLEY_RADIUS = 148
+Island.VALLEY_Y = 26 -- crater floor height (top surface)
+Island.GAP_HALF_ANGLE = 26 -- degrees free of peaks, centered due south
+Island.NORTH_PEAK = Vector3.new(0, 0, -205)
+Island.NORTH_PEAK_TOP = 244 -- flattened summit height (pagoda floor)
+
+export type Biome = "snow" | "desert" | "green"
+
+-- Angle in degrees from north (0 = -Z), positive eastward.
+local function angleOf(x: number, z: number): number
+	return math.deg(math.atan2(x, -z))
+end
+
+function Island.biomeAt(x: number, z: number): Biome
+	local wobble = math.noise(x * 0.003, z * 0.003) * 16
+	local theta = angleOf(x, z) + wobble
+	if theta > -58 and theta <= 44 then
+		return "snow"
+	elseif theta <= -58 and theta > -168 then
+		return "desert"
+	end
+	return "green"
+end
+
+local terrain = workspace.Terrain
+
+local function fillBlock(center: Vector3, size: Vector3, material: Enum.Material)
+	terrain:FillBlock(CFrame.new(center), size, material)
+end
+
+local function fillBall(center: Vector3, radius: number, material: Enum.Material)
+	terrain:FillBall(center, radius, material)
+end
+
+local function fillCylinder(center: Vector3, height: number, radius: number, material: Enum.Material)
+	terrain:FillCylinder(CFrame.new(center), height, radius, material)
+end
+
+-- ------------------------------- Ocean ----------------------------------
+
+local function buildOcean()
+	local half = 1500
+	-- Four quadrant blocks of water; island fills overwrite their voxels.
+	for cx = -1, 1, 2 do
+		for cz = -1, 1, 2 do
+			fillBlock(Vector3.new(cx * half / 2, -14, cz * half / 2), Vector3.new(half, 24, half), Enum.Material.Water)
+		end
+	end
+	-- Sea floor so the water has a bed.
+	fillBlock(Vector3.new(0, -34, 0), Vector3.new(half * 2, 12, half * 2), Enum.Material.Sand)
+end
+
+-- ------------------------------- Island ---------------------------------
+
+local BIOME_GROUND: { [string]: Enum.Material } = {
+	snow = Enum.Material.Snow,
+	desert = Enum.Material.Sand,
+	green = Enum.Material.Grass,
+}
+
+local function coastRadiusAt(theta: number): number
+	return Island.COAST_RADIUS + math.noise(math.cos(math.rad(theta)) * 2.2, math.sin(math.rad(theta)) * 2.2) * 110
+end
+
+local function buildLandmass()
+	local cell = 48
+	for x = -1050, 1050, cell do
+		for z = -1050, 1050, cell do
+			local distance = math.sqrt(x * x + z * z)
+			if distance > coastRadiusAt(angleOf(x, z)) then
+				continue
+			end
+			local biome = Island.biomeAt(x, z)
+			-- Land slab: from below the waterline up to y = 0.
+			fillBlock(Vector3.new(x, -13, z), Vector3.new(cell + 2, 26, cell + 2), BIOME_GROUND[biome])
+		end
+	end
+end
+
+-- Gentle rolling bumps, mesas in the desert, glacier shelves in the snow.
+local function buildRelief(rng: Random)
+	for _ = 1, 90 do
+		local theta = rng:NextNumber(-180, 180)
+		local distance = rng:NextNumber(380, 820)
+		local x = math.sin(math.rad(theta)) * distance
+		local z = -math.cos(math.rad(theta)) * distance
+		local biome = Island.biomeAt(x, z)
+		if biome == "desert" and rng:NextNumber() < 0.4 then
+			-- Stepped mesa.
+			local width = rng:NextNumber(26, 60)
+			local height = rng:NextNumber(14, 40)
+			for step = 0, 2 do
+				fillBlock(
+					Vector3.new(x + rng:NextNumber(-6, 6), height * (0.2 + step * 0.3), z + rng:NextNumber(-6, 6)),
+					Vector3.new(width * (1 - step * 0.28), height * 0.45, width * (1 - step * 0.28)),
+					Enum.Material.Sandstone
+				)
+			end
+		elseif biome == "snow" and rng:NextNumber() < 0.35 then
+			-- Glacier shelf.
+			fillBall(Vector3.new(x, rng:NextNumber(2, 10), z), rng:NextNumber(18, 40), Enum.Material.Glacier)
+		else
+			-- Rolling hill.
+			local material = if biome == "snow"
+				then Enum.Material.Snow
+				elseif biome == "desert" then Enum.Material.Sand
+				else Enum.Material.Grass
+			fillBall(Vector3.new(x, rng:NextNumber(-4, 6), z), rng:NextNumber(14, 34), material)
+		end
+	end
+	-- LeafyGrass patches through the green realm.
+	for _ = 1, 40 do
+		local theta = rng:NextNumber(50, 180)
+		local distance = rng:NextNumber(300, 800)
+		local x = math.sin(math.rad(theta)) * distance
+		local z = -math.cos(math.rad(theta)) * distance
+		fillBall(Vector3.new(x, -2, z), rng:NextNumber(14, 30), Enum.Material.LeafyGrass)
+	end
+end
+
+-- --------------------------- The mountain ring --------------------------
+
+local function buildPeak(rng: Random, base: Vector3, height: number, girth: number)
+	local levels = rng:NextInteger(6, 8)
+	local position = base
+	for level = 0, levels do
+		local t = level / levels
+		local radius = girth * (1 - t * 0.82) * rng:NextNumber(0.85, 1.15)
+		local material = if t > 0.55 then Enum.Material.Slate else Enum.Material.Rock
+		fillBall(
+			Vector3.new(
+				position.X + rng:NextNumber(-girth * 0.2, girth * 0.2),
+				height * t,
+				position.Z + rng:NextNumber(-girth * 0.2, girth * 0.2)
+			),
+			math.max(10, radius),
+			material
+		)
+	end
+	-- A spur or two at the shoulder.
+	for _ = 1, rng:NextInteger(1, 2) do
+		local spurAngle = rng:NextNumber(0, math.pi * 2)
+		fillBall(
+			base + Vector3.new(math.cos(spurAngle) * girth * 0.9, height * rng:NextNumber(0.2, 0.4), math.sin(spurAngle) * girth * 0.9),
+			girth * rng:NextNumber(0.35, 0.55),
+			Enum.Material.Rock
+		)
+	end
+end
+
+local function buildMountains(rng: Random)
+	-- Crater floor first, so peaks bury its rim.
+	fillCylinder(Vector3.new(0, Island.VALLEY_Y / 2, 0), Island.VALLEY_Y + 6, Island.VALLEY_RADIUS + 40, Enum.Material.Ground)
+	fillCylinder(Vector3.new(0, Island.VALLEY_Y - 1, 0), 2.5, Island.VALLEY_RADIUS + 20, Enum.Material.Grass)
+
+	-- The ring: peaks all around except the southern gap.
+	local peakCount = 15
+	for index = 1, peakCount do
+		local theta = -180 + (index - 0.5) * (360 / peakCount)
+		if math.abs(180 - math.abs(theta)) < Island.GAP_HALF_ANGLE then
+			continue -- the southern pass stays open
+		end
+		local ringRadius = rng:NextNumber(195, 245)
+		local x = math.sin(math.rad(theta)) * ringRadius
+		local z = -math.cos(math.rad(theta)) * ringRadius
+		buildPeak(rng, Vector3.new(x, 0, z), rng:NextNumber(120, 215), rng:NextNumber(44, 62))
 	end
 
-	-- Boulders, half-set into the grass.
-	for _ = 1, 26 do
-		local angle = rng:NextNumber(0, math.pi * 2)
-		local radius = rng:NextNumber(300, 900)
-		local size = rng:NextNumber(3, 9)
+	-- The great north peak: tallest, flattened summit for the dark pagoda.
+	buildPeak(rng, Island.NORTH_PEAK, 250, 68)
+	fillCylinder(Vector3.new(Island.NORTH_PEAK.X, Island.NORTH_PEAK_TOP - 3, Island.NORTH_PEAK.Z), 6, 34, Enum.Material.Slate)
+
+	-- Waterfall: a sheet of water down the peak's inner face into a pool.
+	fillBlock(Vector3.new(0, (Island.NORTH_PEAK_TOP + Island.VALLEY_Y) / 2, -146), Vector3.new(14, Island.NORTH_PEAK_TOP - Island.VALLEY_Y, 6), Enum.Material.Water)
+	fillCylinder(Vector3.new(0, Island.VALLEY_Y - 2, -112), 5, 24, Enum.Material.Water)
+end
+
+-- ------------------------------- Rivers ---------------------------------
+
+local function carveRiver(points: { Vector3 })
+	for index = 1, #points - 1 do
+		local from = points[index]
+		local to = points[index + 1]
+		local length = (to - from).Magnitude
+		local direction = (to - from).Unit
+		local step = 14
+		local distance = 0
+		while distance <= length do
+			local at = from + direction * distance
+			fillBall(Vector3.new(at.X, 1, at.Z), 11, Enum.Material.Air)
+			fillBall(Vector3.new(at.X, -5, at.Z), 10, Enum.Material.Water)
+			distance += step
+		end
+	end
+end
+
+local function buildRivers()
+	carveRiver({
+		Vector3.new(240, 0, -60),
+		Vector3.new(420, 0, -10),
+		Vector3.new(600, 0, 60),
+		Vector3.new(780, 0, 90),
+		Vector3.new(960, 0, 110),
+	})
+	carveRiver({
+		Vector3.new(200, 0, 250),
+		Vector3.new(360, 0, 330),
+		Vector3.new(520, 0, 460),
+		Vector3.new(700, 0, 560),
+		Vector3.new(900, 0, 640),
+	})
+end
+
+-- --------------------------- Offshore islets ----------------------------
+
+local function buildIslets(rng: Random)
+	for _ = 1, 7 do
+		local theta = rng:NextNumber(60, 220) -- scattered off the green/south coasts
+		local distance = rng:NextNumber(1000, 1250)
+		local x = math.sin(math.rad(theta)) * distance
+		local z = -math.cos(math.rad(theta)) * distance
+		local radius = rng:NextNumber(16, 42)
+		fillBall(Vector3.new(x, -6, z), radius, Enum.Material.Rock)
+		fillBall(Vector3.new(x, 2, z), radius * 0.7, Enum.Material.Grass)
+	end
+end
+
+-- --------------------- Hollows for the built spaces ---------------------
+
+-- The Deep Mines are parts, not terrain; scoop the rock out around them and
+-- the shaft so the halls stay hollow under the sculpted ground.
+local function carveUnderworld()
+	fillBlock(Vector3.new(0, -33, 270), Vector3.new(44, 78, 76), Enum.Material.Air) -- shaft + ramp
+	fillBlock(Vector3.new(0, -39, 452), Vector3.new(208, 46, 316), Enum.Material.Air) -- both halls
+end
+
+-- ------------------------------ Entrypoint ------------------------------
+
+function Island.build()
+	local rng = Random.new(41)
+	buildOcean()
+	buildLandmass()
+	buildRelief(rng)
+	buildMountains(rng)
+	buildRivers()
+	buildIslets(rng)
+	carveUnderworld()
+	-- A touch of shoreline foam color where land meets sea.
+	local _ = BuildKit -- (parts-based shoreline props may come later)
+end
+
+return Island
+]]></string>
+            </Properties>
+          </Item>
+          <Item class="ModuleScript" referent="38">
+            <Properties>
+              <string name="Name">Overworld</string>
+              <string name="Source"><![CDATA[--!strict
+-- ModuleScript: ServerScriptService > Server > Systems > World > Overworld
+-- Built things on the island's surface: the road web connecting the four
+-- cities, the grand stair down from the crater's southern pass, the mine
+-- gate, river bridges, the dark pagoda on the north peak, waterfall
+-- dressing, and the sky. The land itself is sculpted by World/Island.
+
+local Lighting = game:GetService("Lighting")
+
+local BuildKit = require(script.Parent.BuildKit)
+local Island = require(script.Parent.Island)
+local Cities = require(script.Parent.Cities)
+
+local Overworld = {}
+
+-- The mine shaft opening south of the crater (Underworld builds against it;
+-- Island carves the terrain hollow around it).
+Overworld.GROUND_TOP = 0
+Overworld.HOLE = { x1 = -15, x2 = 15, z1 = 240, z2 = 300 }
+
+local ROCK_DARK = Color3.fromRGB(92, 88, 90)
+local ROAD_COLOR = Color3.fromRGB(203, 184, 148) -- the map's tan paths
+local STAIR_COLOR = Color3.fromRGB(168, 162, 152)
+
+-- ------------------------------- Roads ----------------------------------
+
+local function road(parent: Instance, from: Vector3, to: Vector3, width: number)
+	local mid = (from + to) / 2 + Vector3.new(0, 0.25, 0)
+	BuildKit.part({
+		name = "Road",
+		size = Vector3.new(width, 0.4, (to - from).Magnitude + width * 0.5),
+		cframe = CFrame.lookAt(mid, Vector3.new(to.X, mid.Y, to.Z)),
+		color = ROAD_COLOR,
+		material = Enum.Material.Ground,
+		canCollide = false,
+		parent = parent,
+	})
+end
+
+local function ringRoad(parent: Instance, radius: number, segments: number)
+	for index = 1, segments do
+		local a1 = (index - 1) / segments * math.pi * 2
+		local a2 = index / segments * math.pi * 2
+		road(parent,
+			Vector3.new(math.sin(a1) * radius, 0, math.cos(a1) * radius),
+			Vector3.new(math.sin(a2) * radius, 0, math.cos(a2) * radius),
+			9)
+	end
+end
+
+local function buildRoads(parent: Instance)
+	-- Inner ring skirts the mountains; outer ring laces the island, like
+	-- the reference's web of tan paths.
+	ringRoad(parent, 320, 24)
+	ringRoad(parent, 620, 30)
+
+	-- Spokes from the inner ring out to each biome city's gate.
+	for _, key in { "orthodox", "demonic", "unorthodox" } do
+		local center = Cities.POSITIONS[key]
+		local direction = Vector3.new(center.X, 0, center.Z).Unit
+		road(parent, direction * 320, Vector3.new(center.X, 0, center.Z) - direction * 100, 9)
+	end
+
+	-- Southern pass: stair landing to the mine gate and on to the ring.
+	road(parent, Vector3.new(0, 0, 228), Vector3.new(0, 0, 320), 9)
+
+	-- Wooden bridges where the spokes cross the rivers.
+	local bridges = {
+		{ position = Vector3.new(420, 0, -8), rotation = 20 },
+		{ position = Vector3.new(360, 0, 330), rotation = -30 },
+		{ position = Vector3.new(700, 0, 560), rotation = -35 },
+	}
+	for _, bridge in bridges do
+		local deck = BuildKit.part({
+			name = "Bridge",
+			size = Vector3.new(14, 1.5, 40),
+			cframe = CFrame.new(bridge.position + Vector3.new(0, 1.4, 0)) * CFrame.Angles(0, math.rad(bridge.rotation), 0),
+			color = Color3.fromRGB(133, 100, 68),
+			material = Enum.Material.WoodPlanks,
+			parent = parent,
+		})
+		for side = -1, 1, 2 do
+			BuildKit.part({
+				name = "Bridge_Rail",
+				size = Vector3.new(1, 2.4, 40),
+				cframe = deck.CFrame * CFrame.new(side * 6.5, 1.9, 0),
+				color = Color3.fromRGB(94, 70, 48),
+				material = Enum.Material.Wood,
+				parent = parent,
+			})
+		end
+	end
+end
+
+-- --------------------------- The grand stair ----------------------------
+
+local function buildCraterStair(parent: Instance)
+	local steps = 14
+	local topY = Island.VALLEY_Y
+	local fromZ = 150
+	local toZ = 228
+	for index = 0, steps do
+		local t = index / steps
 		BuildKit.part({
-			name = "Boulder",
-			size = Vector3.new(size, size * 0.7, size * rng:NextNumber(0.7, 1.3)),
-			cframe = CFrame.new(math.cos(angle) * radius, Overworld.GROUND_TOP + size * 0.2, math.sin(angle) * radius)
-				* CFrame.Angles(rng:NextNumber(0, 0.4), rng:NextNumber(0, math.pi), rng:NextNumber(0, 0.3)),
-			color = Color3.fromRGB(120, 116, 112),
+			name = "GrandStair",
+			size = Vector3.new(26, 2.2, (toZ - fromZ) / steps + 1.5),
+			position = Vector3.new(0, topY - t * topY - 0.4, fromZ + t * (toZ - fromZ)),
+			color = STAIR_COLOR,
+			material = Enum.Material.Cobblestone,
+			parent = parent,
+		})
+	end
+	-- Flanking balustrades.
+	for side = -1, 1, 2 do
+		local from = Vector3.new(side * 14, topY + 1, fromZ)
+		local to = Vector3.new(side * 14, 1, toZ)
+		local mid = (from + to) / 2
+		BuildKit.part({
+			name = "GrandStair_Rail",
+			size = Vector3.new(1.6, 3, (to - from).Magnitude + 2),
+			cframe = CFrame.lookAt(mid, to),
+			color = STAIR_COLOR,
 			material = Enum.Material.Slate,
 			parent = parent,
 		})
 	end
 end
 
--- A ring road around the mountain plus a spur, so the three cities and the
--- mine read as connected places instead of objects dropped on a lawn.
-local function buildRoads(parent: Instance)
-	local roadColor = Color3.fromRGB(203, 194, 172)
-	local function road(from: Vector3, to: Vector3, width: number)
-		local mid = (from + to) / 2 + Vector3.new(0, 0.15, 0)
+-- ------------------------------ Mine gate -------------------------------
+
+local function buildMineEntrance(parent: Instance)
+	local hole = Overworld.HOLE
+	local gateZ = hole.z1 - 2
+	for _, x in { hole.x1 - 2, hole.x2 + 2 } do
 		BuildKit.part({
-			name = "Road",
-			size = Vector3.new(width, 0.35, (to - from).Magnitude + width * 0.5),
-			cframe = CFrame.lookAt(mid, Vector3.new(to.X, mid.Y, to.Z)),
-			color = roadColor,
-			material = Enum.Material.Cobblestone,
-			canCollide = false,
+			name = "MineGate_Pillar",
+			size = Vector3.new(4, 18, 4),
+			position = Vector3.new(x, 9, gateZ),
+			color = ROCK_DARK,
+			material = Enum.Material.Slate,
 			parent = parent,
 		})
 	end
-
-	local segments = 22
-	local ringRadius = 302
-	for index = 1, segments do
-		local a1 = (index - 1) / segments * math.pi * 2
-		local a2 = index / segments * math.pi * 2
-		road(
-			Vector3.new(math.sin(a1) * ringRadius, Overworld.GROUND_TOP, math.cos(a1) * ringRadius),
-			Vector3.new(math.sin(a2) * ringRadius, Overworld.GROUND_TOP, math.cos(a2) * ringRadius),
-			9
-		)
-	end
-	-- Spur from the Wayfarer's Rest through the mine gate toward the ring.
-	road(Vector3.new(0, Overworld.GROUND_TOP, 170), Vector3.new(0, Overworld.GROUND_TOP, 236), 9)
+	local lintel = BuildKit.part({
+		name = "MineGate_Lintel",
+		size = Vector3.new((hole.x2 - hole.x1) + 12, 4, 5),
+		position = Vector3.new(0, 20, gateZ),
+		color = ROCK_DARK,
+		material = Enum.Material.Slate,
+		parent = parent,
+	})
+	BuildKit.billboard(lintel, "The Deep Mines of Heavenpillar", Color3.fromRGB(190, 220, 255), 14, 1.6, Vector3.new(0, 3, 0))
 end
+
+-- ------------------- North peak pagoda and waterfall --------------------
+
+local function buildNorthPeak(parent: Instance)
+	local summit = Vector3.new(Island.NORTH_PEAK.X, Island.NORTH_PEAK_TOP, Island.NORTH_PEAK.Z)
+	-- The dark pagoda from the reference, brooding over the falls.
+	BuildKit.pagodaHouse(parent, summit, 26, 26, 3,
+		Color3.fromRGB(62, 50, 48), Color3.fromRGB(34, 28, 26), Color3.fromRGB(48, 26, 26))
+	local platform = BuildKit.cylinder(parent, "Summit_Platform", summit + Vector3.new(0, 0.5, 24), 1, 26,
+		Color3.fromRGB(210, 205, 190), Enum.Material.Marble)
+	BuildKit.billboard(platform, "The Summit of Heavenpillar. Meditate above the falls.", Color3.fromRGB(255, 235, 180), 18, 1.8, Vector3.new(0, 6, 0))
+
+	-- Waterfall dressing: foam at the pool and drifting mist.
+	local poolCenter = Vector3.new(0, Island.VALLEY_Y + 0.4, -112)
+	local foam = BuildKit.cylinder(parent, "Waterfall_Foam", poolCenter, 0.6, 30, Color3.fromRGB(235, 245, 250), Enum.Material.SmoothPlastic)
+	foam.Transparency = 0.45
+	foam.CanCollide = false
+	local mistAnchor = BuildKit.part({
+		name = "Waterfall_Mist",
+		size = Vector3.new(1, 1, 1),
+		position = poolCenter + Vector3.new(0, 6, -20),
+		transparency = 1,
+		canCollide = false,
+		parent = parent,
+	})
+	local mist = Instance.new("ParticleEmitter")
+	mist.Rate = 8
+	mist.Lifetime = NumberRange.new(2, 4)
+	mist.Speed = NumberRange.new(1, 3)
+	mist.Size = NumberSequence.new(8, 16)
+	mist.Transparency = NumberSequence.new(0.75, 1)
+	mist.Color = ColorSequence.new(Color3.fromRGB(230, 240, 250))
+	mist.Parent = mistAnchor
+end
+
+-- -------------------------------- Sky -----------------------------------
 
 local function tuneSky()
 	Lighting.ClockTime = 14.4
@@ -6129,22 +6570,20 @@ local function tuneSky()
 	Lighting.EnvironmentSpecularScale = 0.4
 	if Lighting:FindFirstChildOfClass("Atmosphere") == nil then
 		local atmosphere = Instance.new("Atmosphere")
-		atmosphere.Density = 0.35
+		atmosphere.Density = 0.32
 		atmosphere.Offset = 0.4
 		atmosphere.Color = Color3.fromRGB(199, 199, 214)
 		atmosphere.Decay = Color3.fromRGB(106, 112, 125)
-		atmosphere.Haze = 1.8
+		atmosphere.Haze = 1.6
 		atmosphere.Parent = Lighting
 	end
 end
 
 function Overworld.build(parent: Instance)
-	buildGround(parent)
-	buildMountain(parent)
-	buildMineEntrance(parent)
-	buildWandererSpawn(parent)
-	buildFlora(parent)
 	buildRoads(parent)
+	buildCraterStair(parent)
+	buildMineEntrance(parent)
+	buildNorthPeak(parent)
 	tuneSky()
 end
 
@@ -6152,7 +6591,7 @@ return Overworld
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="37">
+          <Item class="ModuleScript" referent="39">
             <Properties>
               <string name="Name">Underworld</string>
               <string name="Source"><![CDATA[--!strict
@@ -6424,18 +6863,20 @@ return Underworld
             </Properties>
           </Item>
         </Item>
-        <Item class="ModuleScript" referent="38">
+        <Item class="ModuleScript" referent="40">
           <Properties>
             <string name="Name">WorldBuilder</string>
             <string name="Source"><![CDATA[--!strict
 -- ModuleScript: ServerScriptService > Server > Systems > WorldBuilder
--- Stamps the whole map out of code at server start: surface, mountain,
--- three cities, and the caves. Keeping the world in code (rather than in a
--- place file) is what lets the entire game live in git and build from a
--- clean checkout; nothing in Studio is hand-placed.
+-- Builds the whole island at server start: sculpted terrain first (Island),
+-- then surface works (roads, stairs, mine gate, peak pagoda), the four
+-- cities, biome flora, and the Deep Mines below. All from code, so the
+-- entire game builds from a clean checkout; nothing is hand-placed.
 
+local Island = require(script.Parent.World.Island)
 local Overworld = require(script.Parent.World.Overworld)
 local Cities = require(script.Parent.World.Cities)
+local Flora = require(script.Parent.World.Flora)
 local Underworld = require(script.Parent.World.Underworld)
 
 local WorldBuilder = {}
@@ -6447,12 +6888,14 @@ function WorldBuilder.Init()
 	local world = Instance.new("Folder")
 	world.Name = "World"
 
+	Island.build()
 	Overworld.build(world)
 	Cities.build(world)
+	Flora.build(world)
 	Underworld.build(world)
 
 	world.Parent = workspace
-	print("[WorldBuilder] Heavenpillar and the three cities stand.")
+	print("[WorldBuilder] The island stands: three realms, four cities, one mountain.")
 end
 
 return WorldBuilder
@@ -6462,21 +6905,21 @@ return WorldBuilder
       </Item>
     </Item>
   </Item>
-  <Item class="SoundService" referent="39">
+  <Item class="SoundService" referent="41">
     <Properties>
       <string name="Name">SoundService</string>
       <bool name="RespectFilteringEnabled">true</bool>
     </Properties>
   </Item>
-  <Item class="StarterPlayer" referent="40">
+  <Item class="StarterPlayer" referent="42">
     <Properties>
       <string name="Name">StarterPlayer</string>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="41">
+    <Item class="StarterPlayerScripts" referent="43">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="LocalScript" referent="42">
+      <Item class="LocalScript" referent="44">
         <Properties>
           <string name="Name">Client</string>
           <string name="Source"><![CDATA[--!strict
@@ -6527,11 +6970,11 @@ end
 print("[Client] All controllers started")
 ]]></string>
         </Properties>
-        <Item class="Folder" referent="43">
+        <Item class="Folder" referent="45">
           <Properties>
             <string name="Name">Controllers</string>
           </Properties>
-          <Item class="ModuleScript" referent="44">
+          <Item class="ModuleScript" referent="46">
             <Properties>
               <string name="Name">CraftingController</string>
               <string name="Source"><![CDATA[--!strict
@@ -6649,7 +7092,7 @@ return CraftingController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="45">
+          <Item class="ModuleScript" referent="47">
             <Properties>
               <string name="Name">DestinyController</string>
               <string name="Source"><![CDATA[--!strict
@@ -6721,7 +7164,7 @@ local function renderRaces()
 		local equipped = destiny.race == raceId
 		local row = UiKit.frame(raceList, UDim2.new(1, -8, 0, 46), UDim2.fromOffset(0, 0), UiKit.Colors.panelLight)
 		row.LayoutOrder = index
-		UiKit.label(row, `{race.name} {race.hanzi}`, UDim2.new(1, -90, 0, 18), UDim2.fromOffset(6, 3), {
+		UiKit.label(row, race.name, UDim2.new(1, -90, 0, 18), UDim2.fromOffset(6, 3), {
 			textSize = 13,
 			color = UiKit.rarityColor(race.rarity),
 			bold = true,
@@ -6823,7 +7266,7 @@ local function spin(kind: "race" | "talent")
 			if kind == "race" then
 				local race = Races.get(id)
 				if race then
-					displayName = `{race.name} {race.hanzi}`
+					displayName = race.name
 					blurb = race.blurb
 				end
 			else
@@ -6894,7 +7337,7 @@ return DestinyController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="46">
+          <Item class="ModuleScript" referent="48">
             <Properties>
               <string name="Name">DialogueController</string>
               <string name="Source"><![CDATA[--!strict
@@ -7002,7 +7445,7 @@ return DialogueController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="47">
+          <Item class="ModuleScript" referent="49">
             <Properties>
               <string name="Name">HudController</string>
               <string name="Source"><![CDATA[--!strict
@@ -7035,26 +7478,23 @@ local HudController = {}
 local player = Players.LocalPlayer
 
 local realmMedallion: TextLabel
-local pathBanner: TextLabel
 local nameLabel: TextLabel
 local identityLabel: TextLabel
 local qiBar: UiKit.Bar
-local qiValue: TextLabel
+local healthBar: UiKit.Bar
+local staminaBar: UiKit.Bar
 local xpBar: UiKit.Bar
 local xpValue: TextLabel
 local stonesLabel: TextLabel
 local meditateLabel: TextLabel
 local hintsLabel: TextLabel
 local toastArea: Frame
+local orbFill: Frame
+local orbLabel: TextLabel
+local orbStroke: UIStroke
 
 type SlotUi = { root: Frame, name: TextLabel, key: TextLabel, cooldown: Frame }
 local slotUis: { SlotUi } = {}
-
-local PATH_HANZI: { [string]: string } = {
-	orthodox = "正\n道",
-	unorthodox = "散\n修",
-	demonic = "魔\n道",
-}
 
 local function renderStats()
 	local stats = ClientState.stats
@@ -7062,15 +7502,23 @@ local function renderStats()
 		return
 	end
 	realmMedallion.Text = tostring(stats.realm)
-	pathBanner.Text = PATH_HANZI[stats.path or ""] or "游\n侠"
 
-	qiBar.set(math.clamp(stats.qi / math.max(stats.maxQi, 1), 0, 1), "")
-	qiValue.Text = `{math.floor(stats.qi)} / {stats.maxQi}`
-	xpBar.set(math.clamp(stats.cultivationXp / math.max(stats.breakthroughXp, 1), 0, 1), "")
+	qiBar.set(math.clamp(stats.qi / math.max(stats.maxQi, 1), 0, 1), `QI  {math.floor(stats.qi)} / {stats.maxQi}`)
+	local breakFraction = math.clamp(stats.cultivationXp / math.max(stats.breakthroughXp, 1), 0, 1)
+	xpBar.set(breakFraction, "")
 	xpValue.Text = `{stats.cultivationXp} / {stats.breakthroughXp}`
 
+	-- Breakthrough orb: fills toward the next realm; burns when ready. Its
+	-- color is the player's path.
+	local diameter = 8 + 54 * math.sqrt(breakFraction)
+	orbFill.Size = UDim2.fromOffset(diameter, diameter)
+	local pathForOrb = if stats.path then Paths[stats.path :: string] else nil
+	orbFill.BackgroundColor3 = if pathForOrb then pathForOrb.accentColor else UiKit.Colors.textDim
+	orbLabel.Text = if breakFraction >= 1 then "BREAK" else `{math.floor(breakFraction * 100)}%`
+	orbStroke.Color = if breakFraction >= 1 then UiKit.Colors.danger else UiKit.Colors.ink
+
 	local race = Races.get(stats.race)
-	local raceName = if race then `{race.name} {race.hanzi}` else stats.race
+	local raceName = if race then race.name else stats.race
 	local pathDef = if stats.path then Paths[stats.path :: string] else nil
 	local pathName = if pathDef then pathDef.name else "Wanderer"
 	local social = ClientState.social
@@ -7175,9 +7623,10 @@ function HudController.Init()
 	-- slide under the platform's own buttons.
 	screen.IgnoreGuiInset = false
 
-	-- ------------------------ Top-left identity ------------------------
-	-- Realm medallion: a brush circle holding the realm number.
-	local medallion = UiKit.frame(screen, UDim2.fromOffset(56, 56), UDim2.fromOffset(16, 14))
+	-- ------------------------ Top-right identity -----------------------
+	-- Realm medallion: a brush circle holding the realm number, pinned to
+	-- the top-right corner; the vitals block hangs to its left.
+	local medallion = UiKit.frame(screen, UDim2.fromOffset(56, 56), UDim2.new(1, -72, 0, 14))
 	local medallionCorner = medallion:FindFirstChildOfClass("UICorner")
 	if medallionCorner then
 		medallionCorner.CornerRadius = UDim.new(1, 0)
@@ -7193,19 +7642,10 @@ function HudController.Init()
 		xalign = Enum.TextXAlignment.Center,
 	})
 
-	-- Vertical hanzi banner under the medallion: your path, brush-written.
-	local banner = UiKit.frame(screen, UDim2.fromOffset(30, 74), UDim2.fromOffset(29, 76), UiKit.Colors.ink)
-	pathBanner = UiKit.label(banner, "游\n侠", UDim2.fromScale(1, 1), UDim2.fromScale(0, 0), {
-		textSize = 20,
-		color = UiKit.Colors.panel,
-		title = true,
-		xalign = Enum.TextXAlignment.Center,
-	})
-
 	-- Name, identity line, and the brush bars.
 	local vitals = Instance.new("Frame")
 	vitals.Size = UDim2.fromOffset(320, 152)
-	vitals.Position = UDim2.fromOffset(84, 12)
+	vitals.Position = UDim2.new(1, -404, 0, 12)
 	vitals.BackgroundTransparency = 1
 	vitals.Parent = screen
 
@@ -7222,41 +7662,31 @@ function HudController.Init()
 	identityLabel.TextStrokeColor3 = UiKit.Colors.panel
 	identityLabel.TextStrokeTransparency = 0.4
 
-	UiKit.label(vitals, "QI", UDim2.fromOffset(80, 12), UDim2.fromOffset(0, 44), { textSize = 10, bold = true })
-	qiBar = UiKit.bar(vitals, UDim2.fromOffset(190, 13), UDim2.fromOffset(0, 57), UiKit.Colors.qi)
-	qiValue = UiKit.label(vitals, "", UDim2.fromOffset(120, 13), UDim2.fromOffset(198, 57), { textSize = 11 })
-	qiValue.TextStrokeColor3 = UiKit.Colors.panel
-	qiValue.TextStrokeTransparency = 0.4
-
-	UiKit.label(vitals, "CULTIVATION", UDim2.fromOffset(110, 12), UDim2.fromOffset(0, 74), { textSize = 10, bold = true })
-	xpBar = UiKit.bar(vitals, UDim2.fromOffset(190, 13), UDim2.fromOffset(0, 87), UiKit.Colors.xp)
-	xpValue = UiKit.label(vitals, "", UDim2.fromOffset(120, 13), UDim2.fromOffset(198, 87), { textSize = 11 })
+	UiKit.label(vitals, "CULTIVATION", UDim2.fromOffset(110, 12), UDim2.fromOffset(0, 44), { textSize = 10, bold = true })
+	xpBar = UiKit.bar(vitals, UDim2.fromOffset(190, 13), UDim2.fromOffset(0, 57), UiKit.Colors.xp)
+	xpValue = UiKit.label(vitals, "", UDim2.fromOffset(120, 13), UDim2.fromOffset(198, 57), { textSize = 11 })
 	xpValue.TextStrokeColor3 = UiKit.Colors.panel
 	xpValue.TextStrokeTransparency = 0.4
 
-	UiKit.label(vitals, "STAMINA", UDim2.fromOffset(110, 12), UDim2.fromOffset(0, 104), { textSize = 10, bold = true })
-	local staminaBar = UiKit.bar(vitals, UDim2.fromOffset(190, 10), UDim2.fromOffset(0, 117), UiKit.Colors.health)
-	ClientState.StaminaChanged:Connect(function(current: number, max: number)
-		staminaBar.set(math.clamp(current / math.max(max, 1), 0, 1), "")
-	end)
-
-	stonesLabel = UiKit.label(vitals, "", UDim2.new(1, 0, 0, 14), UDim2.fromOffset(0, 132), { textSize = 11 })
+	stonesLabel = UiKit.label(vitals, "", UDim2.new(1, 0, 0, 14), UDim2.fromOffset(0, 76), { textSize = 11 })
 	stonesLabel.TextStrokeColor3 = UiKit.Colors.panel
 	stonesLabel.TextStrokeTransparency = 0.4
 
-	-- ----------------------- Top-left icon menu ------------------------
+	-- ----------------------- Top-right menu bar ------------------------
 	local menuEntries = {
-		{ glyph = "新", caption = "Updates", panel = "updates" },
-		{ glyph = "技", caption = "Arts", panel = "techniques" },
-		{ glyph = "命", caption = "Destiny", panel = "destiny" },
-		{ glyph = "囊", caption = "Bag", panel = "inventory" },
-		{ glyph = "宗", caption = "Sect", panel = "sect" },
-		{ glyph = "阁", caption = "Menu", panel = "menu" },
+		{ caption = "Updates", panel = "updates" },
+		{ caption = "Arts", panel = "techniques" },
+		{ caption = "Destiny", panel = "destiny" },
+		{ caption = "Bag", panel = "inventory" },
+		{ caption = "Sect", panel = "sect" },
+		{ caption = "Menu", panel = "menu" },
 	}
+	local buttonWidth = 66
+	local rowWidth = #menuEntries * (buttonWidth + 6)
 	for index, entry in menuEntries do
-		UiKit.iconButton(screen, entry.glyph, entry.caption, UDim2.fromOffset(16 + (index - 1) * 50, 180), function()
+		UiKit.button(screen, entry.caption, UDim2.fromOffset(buttonWidth, 26), UDim2.new(1, -16 - rowWidth + (index - 1) * (buttonWidth + 6), 0, 172), function()
 			Panels.toggle(entry.panel)
-		end)
+		end, { textSize = 10 })
 	end
 
 	-- Meditation indicator.
@@ -7269,16 +7699,87 @@ function HudController.Init()
 	meditateLabel.TextStrokeTransparency = 0.3
 	meditateLabel.Visible = false
 
+	-- --------------------- Vital bars above the hotbar -----------------
+	local barsWidth = 320
+	local bottomBars = Instance.new("Frame")
+	bottomBars.Size = UDim2.fromOffset(barsWidth, 56)
+	bottomBars.Position = UDim2.new(0.5, -barsWidth / 2, 1, -168)
+	bottomBars.BackgroundTransparency = 1
+	bottomBars.Parent = screen
+
+	healthBar = UiKit.bar(bottomBars, UDim2.new(1, 0, 0, 16), UDim2.fromOffset(0, 0), UiKit.Colors.health)
+	qiBar = UiKit.bar(bottomBars, UDim2.new(1, 0, 0, 16), UDim2.fromOffset(0, 19), UiKit.Colors.qi)
+	staminaBar = UiKit.bar(bottomBars, UDim2.new(1, 0, 0, 12), UDim2.fromOffset(0, 38), UiKit.Colors.stamina)
+
+	ClientState.StaminaChanged:Connect(function(current: number, max: number)
+		staminaBar.set(math.clamp(current / math.max(max, 1), 0, 1), "")
+	end)
+
+	-- Health straight from our humanoid, re-hooked on every respawn.
+	local function hookHealth(model: Model)
+		local humanoid = model:FindFirstChildOfClass("Humanoid") or model:WaitForChild("Humanoid", 10)
+		if humanoid == nil or not humanoid:IsA("Humanoid") then
+			return
+		end
+		local function renderHealth()
+			healthBar.set(math.clamp(humanoid.Health / math.max(humanoid.MaxHealth, 1), 0, 1),
+				`HP  {math.floor(humanoid.Health)} / {math.floor(humanoid.MaxHealth)}`)
+		end
+		humanoid.HealthChanged:Connect(renderHealth)
+		humanoid:GetPropertyChangedSignal("MaxHealth"):Connect(renderHealth)
+		renderHealth()
+	end
+	if player.Character then
+		task.spawn(hookHealth, player.Character)
+	end
+	player.CharacterAdded:Connect(function(model)
+		task.spawn(hookHealth, model)
+	end)
+
 	-- ------------------------------ Hotbar -----------------------------
+	-- Slots 1-3, the breakthrough orb, slots 4-6.
 	local slotSize = 84
+	local orbSize = 76
+	local hotbarWidth = Config.SLOT_COUNT * (slotSize + 6) + orbSize + 12
 	local hotbar = Instance.new("Frame")
-	hotbar.Size = UDim2.fromOffset(Config.SLOT_COUNT * (slotSize + 6), slotSize)
-	hotbar.Position = UDim2.new(0.5, -(Config.SLOT_COUNT * (slotSize + 6)) / 2, 1, -slotSize - 14)
+	hotbar.Size = UDim2.fromOffset(hotbarWidth, slotSize)
+	hotbar.Position = UDim2.new(0.5, -hotbarWidth / 2, 1, -slotSize - 14)
 	hotbar.BackgroundTransparency = 1
 	hotbar.Parent = screen
+
+	local orb = UiKit.frame(hotbar, UDim2.fromOffset(orbSize, orbSize), UDim2.fromOffset(3 * (slotSize + 6) + 6, (slotSize - orbSize) / 2), UiKit.Colors.inset)
+	local orbCorner = orb:FindFirstChildOfClass("UICorner")
+	if orbCorner then
+		orbCorner.CornerRadius = UDim.new(1, 0)
+	end
+	orbStroke = Instance.new("UIStroke")
+	orbStroke.Color = UiKit.Colors.ink
+	orbStroke.Thickness = 2.4
+	orbStroke.Parent = orb
+	orbFill = Instance.new("Frame")
+	orbFill.AnchorPoint = Vector2.new(0.5, 0.5)
+	orbFill.Position = UDim2.fromScale(0.5, 0.5)
+	orbFill.Size = UDim2.fromOffset(8, 8)
+	orbFill.BackgroundColor3 = UiKit.Colors.textDim
+	orbFill.BorderSizePixel = 0
+	orbFill.Parent = orb
+	local orbFillCorner = Instance.new("UICorner")
+	orbFillCorner.CornerRadius = UDim.new(1, 0)
+	orbFillCorner.Parent = orbFill
+	orbLabel = UiKit.label(orb, "0%", UDim2.fromScale(1, 1), UDim2.fromScale(0, 0), {
+		textSize = 15,
+		bold = true,
+		xalign = Enum.TextXAlignment.Center,
+		color = UiKit.Colors.panel,
+	})
+	orbLabel.ZIndex = 3
+	orbLabel.TextStrokeColor3 = UiKit.Colors.ink
+	orbLabel.TextStrokeTransparency = 0
+
 	for slot = 1, Config.SLOT_COUNT do
-		-- Ink-filled slots with paper text, per the kit's quickbar.
-		local root = UiKit.frame(hotbar, UDim2.fromOffset(slotSize, slotSize), UDim2.fromOffset((slot - 1) * (slotSize + 6), 0), UiKit.Colors.ink)
+		-- Ink-filled slots with paper text; slots 4-6 sit past the orb.
+		local slotX = (slot - 1) * (slotSize + 6) + (if slot > 3 then orbSize + 12 else 0)
+		local root = UiKit.frame(hotbar, UDim2.fromOffset(slotSize, slotSize), UDim2.fromOffset(slotX, 0), UiKit.Colors.ink)
 		root.BackgroundTransparency = 0.12
 		local slotStroke = Instance.new("UIStroke")
 		slotStroke.Color = UiKit.Colors.ink
@@ -7309,7 +7810,7 @@ function HudController.Init()
 	end
 
 	-- Hints footer.
-	hintsLabel = UiKit.label(screen, "1-6 Cast   Shift Sprint   Q Dash   O Qi Step   T Arts   R Destiny   I Bag   N Sect   G Meditate   M Menu", UDim2.new(0, 800, 0, 18), UDim2.new(0.5, -400, 1, -118), {
+	hintsLabel = UiKit.label(screen, "1-6 Cast   Shift Sprint   Q Dash   O Qi Step   T Arts   R Destiny   I Bag   N Sect   G Meditate   M Menu", UDim2.new(0, 800, 0, 18), UDim2.new(0.5, -400, 1, -192), {
 		textSize = 13,
 		xalign = Enum.TextXAlignment.Center,
 	})
@@ -7350,7 +7851,7 @@ return HudController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="48">
+          <Item class="ModuleScript" referent="50">
             <Properties>
               <string name="Name">InventoryController</string>
               <string name="Source"><![CDATA[--!strict
@@ -7503,7 +8004,7 @@ return InventoryController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="49">
+          <Item class="ModuleScript" referent="51">
             <Properties>
               <string name="Name">MeditateController</string>
               <string name="Source"><![CDATA[--!strict
@@ -7577,7 +8078,7 @@ return MeditateController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="50">
+          <Item class="ModuleScript" referent="52">
             <Properties>
               <string name="Name">MenuController</string>
               <string name="Source"><![CDATA[--!strict
@@ -7736,7 +8237,7 @@ return MenuController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="51">
+          <Item class="ModuleScript" referent="53">
             <Properties>
               <string name="Name">MovementController</string>
               <string name="Source"><![CDATA[--!strict
@@ -8026,7 +8527,7 @@ return MovementController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="52">
+          <Item class="ModuleScript" referent="54">
             <Properties>
               <string name="Name">SectController</string>
               <string name="Source"><![CDATA[--!strict
@@ -8283,7 +8784,7 @@ return SectController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="53">
+          <Item class="ModuleScript" referent="55">
             <Properties>
               <string name="Name">TechniqueController</string>
               <string name="Source"><![CDATA[--!strict
@@ -8536,7 +9037,7 @@ return TechniqueController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="54">
+          <Item class="ModuleScript" referent="56">
             <Properties>
               <string name="Name">TechniqueForgeController</string>
               <string name="Source"><![CDATA[--!strict
@@ -8871,7 +9372,7 @@ return TechniqueForgeController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="55">
+          <Item class="ModuleScript" referent="57">
             <Properties>
               <string name="Name">UpdatesController</string>
               <string name="Source"><![CDATA[--!strict
@@ -8923,11 +9424,11 @@ return UpdatesController
             </Properties>
           </Item>
         </Item>
-        <Item class="Folder" referent="56">
+        <Item class="Folder" referent="58">
           <Properties>
             <string name="Name">Modules</string>
           </Properties>
-          <Item class="ModuleScript" referent="57">
+          <Item class="ModuleScript" referent="59">
             <Properties>
               <string name="Name">ClientSettings</string>
               <string name="Source"><![CDATA[--!strict
@@ -8965,7 +9466,7 @@ return ClientSettings
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="58">
+          <Item class="ModuleScript" referent="60">
             <Properties>
               <string name="Name">ClientState</string>
               <string name="Source"><![CDATA[--!strict
@@ -9092,7 +9593,7 @@ return ClientState
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="59">
+          <Item class="ModuleScript" referent="61">
             <Properties>
               <string name="Name">Panels</string>
               <string name="Source"><![CDATA[--!strict
@@ -9120,7 +9621,7 @@ return Panels
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="60">
+          <Item class="ModuleScript" referent="62">
             <Properties>
               <string name="Name">UiKit</string>
               <string name="Source"><![CDATA[--!strict
@@ -9143,10 +9644,12 @@ UiKit.Colors = {
 	gold = Color3.fromRGB(27, 24, 21), -- accent = ink in the manhwa theme
 	text = Color3.fromRGB(27, 24, 21),
 	textDim = Color3.fromRGB(88, 82, 72),
-	qi = Color3.fromRGB(35, 32, 28), -- bar fills stay monochrome
+	-- Vital bars keep real colors so they read at a glance.
+	qi = Color3.fromRGB(59, 125, 216), -- blue
 	xp = Color3.fromRGB(107, 101, 90),
-	health = Color3.fromRGB(68, 64, 58),
-	danger = Color3.fromRGB(163, 46, 36), -- the one color: seal red
+	health = Color3.fromRGB(194, 59, 46), -- red
+	stamina = Color3.fromRGB(224, 138, 46), -- orange
+	danger = Color3.fromRGB(163, 46, 36), -- seal red
 }
 
 UiKit.RarityColors = {
@@ -9443,7 +9946,7 @@ return UiKit
       </Item>
     </Item>
   </Item>
-  <Item class="Workspace" referent="61">
+  <Item class="Workspace" referent="63">
     <Properties>
       <string name="Name">Workspace</string>
       <bool name="FilteringEnabled">true</bool>

@@ -18,10 +18,12 @@ UiKit.Colors = {
 	gold = Color3.fromRGB(27, 24, 21), -- accent = ink in the manhwa theme
 	text = Color3.fromRGB(27, 24, 21),
 	textDim = Color3.fromRGB(88, 82, 72),
-	qi = Color3.fromRGB(35, 32, 28), -- bar fills stay monochrome
+	-- Vital bars keep real colors so they read at a glance.
+	qi = Color3.fromRGB(59, 125, 216), -- blue
 	xp = Color3.fromRGB(107, 101, 90),
-	health = Color3.fromRGB(68, 64, 58),
-	danger = Color3.fromRGB(163, 46, 36), -- the one color: seal red
+	health = Color3.fromRGB(194, 59, 46), -- red
+	stamina = Color3.fromRGB(224, 138, 46), -- orange
+	danger = Color3.fromRGB(163, 46, 36), -- seal red
 }
 
 UiKit.RarityColors = {
