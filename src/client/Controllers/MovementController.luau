@@ -22,10 +22,10 @@ local MovementController = {}
 local MAX_STAMINA = 100
 local SPRINT_DRAIN = 18 -- per second
 local STAMINA_REGEN = 14 -- per second, when not sprinting
-local SPRINT_MULT = 1.6
+local SPRINT_MULT = 2
 local DASH_COST = 25
 local DASH_COOLDOWN = 2
-local DASH_SPEED = 70
+local DASH_SPEED = 110
 
 -- Roblox-owned Ninja animation pack (usable in any experience, R15): a
 -- forward-leaning martial run for sprinting, Qi Step, and dashes.
@@ -165,20 +165,21 @@ local function dash()
 		track:AdjustSpeed(2.4)
 	end
 
+	-- Blue qi ribbon streaming off the feet.
 	local a0 = Instance.new("Attachment")
-	a0.Position = Vector3.new(0, 1, 0)
+	a0.Position = Vector3.new(-0.9, -2.9, 0)
 	a0.Parent = root
 	local a1 = Instance.new("Attachment")
-	a1.Position = Vector3.new(0, -1, 0)
+	a1.Position = Vector3.new(0.9, -2.9, 0)
 	a1.Parent = root
 	local trail = Instance.new("Trail")
 	trail.Attachment0 = a0
 	trail.Attachment1 = a1
-	trail.Color = ColorSequence.new(Color3.fromRGB(120, 210, 255))
-	trail.Transparency = NumberSequence.new(0.35, 1)
-	trail.Lifetime = 0.25
-	trail.WidthScale = NumberSequence.new(1, 0.35)
-	trail.FaceCamera = true
+	trail.Color = ColorSequence.new(Color3.fromRGB(58, 132, 255), Color3.fromRGB(120, 190, 255))
+	trail.Transparency = NumberSequence.new(0.15, 1)
+	trail.Lifetime = 0.32
+	trail.WidthScale = NumberSequence.new(1, 0.3)
+	trail.LightEmission = 0.6
 	trail.Parent = root
 	task.delay(0.4, function()
 		trail.Enabled = false
