@@ -167,8 +167,8 @@ end
 
 local function buildMountains(rng: Random)
 	-- Crater floor first, so peaks bury its rim.
-	fillCylinder(Vector3.new(0, Island.VALLEY_Y / 2, 0), Island.VALLEY_Y + 6, Island.VALLEY_RADIUS + 60, Enum.Material.Ground)
-	fillCylinder(Vector3.new(0, Island.VALLEY_Y - 1, 0), 2.5, Island.VALLEY_RADIUS + 30, Enum.Material.Grass)
+	fillCylinder(Vector3.new(0, Island.VALLEY_Y - 23, 0), 46, Island.VALLEY_RADIUS + 60, Enum.Material.Ground)
+	fillCylinder(Vector3.new(0, Island.VALLEY_Y - 1.25, 0), 2.5, Island.VALLEY_RADIUS + 30, Enum.Material.Grass)
 
 	-- The ring: peaks all around except the southern gap.
 	local peakCount = 17

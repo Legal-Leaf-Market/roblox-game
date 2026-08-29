@@ -134,7 +134,7 @@ function BuildKit.chineseRoof(parent: Instance, center: Vector3, width: number, 
 	local capD = depth + overhang * 2
 	BuildKit.part({
 		name = "Roof_Cap",
-		size = Vector3.new(capW, 1.5, capD),
+		size = Vector3.new(capW, 2.2, capD),
 		position = Vector3.new(center.X, y + 0.5, center.Z),
 		color = roofColor,
 		material = material,

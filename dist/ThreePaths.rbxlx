@@ -5315,7 +5315,7 @@ function BuildKit.chineseRoof(parent: Instance, center: Vector3, width: number, 
 	local capD = depth + overhang * 2
 	BuildKit.part({
 		name = "Roof_Cap",
-		size = Vector3.new(capW, 1.5, capD),
+		size = Vector3.new(capW, 2.2, capD),
 		position = Vector3.new(center.X, y + 0.5, center.Z),
 		color = roofColor,
 		material = material,
@@ -5854,20 +5854,50 @@ local function buildCity(parent: Instance, spec: CitySpec)
 	local sign = BuildKit.paifang(city, Vector3.new(gatePos.X, center.Y, gatePos.Z), toCenter, 44, TIMBER, theme.roof)
 	BuildKit.billboard(sign, `{spec.name}\n{spec.subtitle}`, spec.accent, 18, 3, Vector3.new(0, 4, 0))
 
-	-- Pagoda homes on an inner ring, skipping the gate and shrine bearings.
-	for index = 1, 12 do
-		local angle = index / 12 * math.pi * 2
-		local gateDelta = math.atan2(math.sin(angle - gateAngle), math.cos(angle - gateAngle))
-		if math.abs(gateDelta) < math.rad(30) or math.abs(gateDelta) > math.rad(150) then
-			continue
+	-- Pagoda homes on two rings so the plaza reads as a lived-in city.
+	local rings = {
+		{ fraction = 0.44, count = 7, width = 40, depth = 32, stagger = 0.45 },
+		{ fraction = 0.72, count = 11, width = 44, depth = 34, stagger = 0 },
+	}
+	for _, ring in rings do
+		for index = 1, ring.count do
+			local angle = index / ring.count * math.pi * 2 + ring.stagger
+			local gateDelta = math.atan2(math.sin(angle - gateAngle), math.cos(angle - gateAngle))
+			if math.abs(gateDelta) < math.rad(26) then
+				continue -- keep the gate avenue open
+			end
+			if ring.fraction < 0.6 and math.abs(gateDelta) > math.rad(150) then
+				continue -- the sect hall and shrine own the back of the inner ring
+			end
+			local homeCenter = center + Vector3.new(math.cos(angle) * radius * ring.fraction, 0, math.sin(angle) * radius * ring.fraction)
+			BuildKit.pagodaHouse(city, homeCenter, ring.width, ring.depth, 2, theme.plaster, TIMBER, theme.roof, theme.roofMaterial)
 		end
-		local homeCenter = center + Vector3.new(math.cos(angle) * radius * 0.62, 0, math.sin(angle) * radius * 0.62)
-		BuildKit.pagodaHouse(city, homeCenter, 36, 28, 2, theme.plaster, TIMBER, theme.roof, theme.roofMaterial)
 	end
+
+	-- Cobbled avenues: gate to center, and a cross through the plaza.
+	local roadColor = Color3.fromRGB(158, 150, 138)
+	local function plazaRoad(from: Vector3, to: Vector3, width: number)
+		local mid = (from + to) / 2 + Vector3.new(0, 0.85, 0)
+		BuildKit.part({
+			name = "Plaza_Road",
+			size = Vector3.new(width, 0.5, (to - from).Magnitude),
+			cframe = CFrame.lookAt(mid, Vector3.new(to.X, mid.Y, to.Z)),
+			color = roadColor,
+			material = Enum.Material.Cobblestone,
+			canCollide = false,
+			parent = city,
+		})
+	end
+	local side = Vector3.new(-toCenter.Z, 0, toCenter.X)
+	plazaRoad(center + toCenter * radius, center - toCenter * radius * 0.35, 16)
+	plazaRoad(center - side * radius * 0.85, center + side * radius * 0.85, 12)
+
+	-- Central dais the shrine/waypost stands on.
+	BuildKit.cylinder(city, "Plaza_Dais", center + Vector3.new(0, 1, 0) + (-toCenter) * radius * 0.22, 1.6, 70, roadColor, Enum.Material.Slate)
 
 	-- Sect hall tower opposite the gate, shrine (or sign) before it.
 	local backDir = -toCenter
-	BuildKit.pagodaHouse(city, center + backDir * radius * 0.55, 44, 44, 4, theme.plaster, TIMBER, theme.roof, theme.roofMaterial)
+	BuildKit.pagodaHouse(city, center + backDir * radius * 0.52, 56, 56, 4, theme.plaster, TIMBER, theme.roof, theme.roofMaterial)
 
 	local shrinePos = center + backDir * radius * 0.22
 	if pathDef then
@@ -6360,8 +6390,8 @@ end
 
 local function buildMountains(rng: Random)
 	-- Crater floor first, so peaks bury its rim.
-	fillCylinder(Vector3.new(0, Island.VALLEY_Y / 2, 0), Island.VALLEY_Y + 6, Island.VALLEY_RADIUS + 60, Enum.Material.Ground)
-	fillCylinder(Vector3.new(0, Island.VALLEY_Y - 1, 0), 2.5, Island.VALLEY_RADIUS + 30, Enum.Material.Grass)
+	fillCylinder(Vector3.new(0, Island.VALLEY_Y - 23, 0), 46, Island.VALLEY_RADIUS + 60, Enum.Material.Ground)
+	fillCylinder(Vector3.new(0, Island.VALLEY_Y - 1.25, 0), 2.5, Island.VALLEY_RADIUS + 30, Enum.Material.Grass)
 
 	-- The ring: peaks all around except the southern gap.
 	local peakCount = 17
