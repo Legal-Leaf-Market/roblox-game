@@ -98,5 +98,24 @@ local solo = Rules.new({ "Steven" })
 local so2 = Rules.apply(solo, { firstHit = nil, pocketed = {}, railAfterContact = false, scratch = false }, onTable({}))
 ok(so2.turn == 1, "practice keeps the one player shooting")
 
+-- Spin. Straight shot into a ball: plain stops dead, follow goes on, draw comes back.
+local function straight(top)
+	local t = { { id = 0, x = -20, y = 0, vx = 0, vy = 0, pocketed = false }, { id = 5, x = 0, y = 0, vx = 0, vy = 0, pocketed = false } }
+	Physics.shoot(t, 0, 0.14, top, 0)
+	return t[1].x
+end
+local plain, follow, draw = straight(0), straight(1), straight(-1)
+ok(follow > plain + 3, ("follow rolls on through (%.1f vs %.1f)"):format(follow, plain))
+ok(draw < plain - 3, ("draw comes back (%.1f vs %.1f)"):format(draw, plain))
+-- Side spin changes a straight-on cushion rebound; left and right go opposite ways.
+local function rail(side)
+	local t = { { id = 0, x = 38, y = 0, vx = 0, vy = 0, pocketed = false } }
+	Physics.shoot(t, 0, 0.15, 0, side)
+	return t[1].y
+end
+local r0, rR, rL = rail(0), rail(1), rail(-1)
+ok(math.abs(r0) < 0.01, "no english: straight back")
+ok(rR > 1 and rL < -1, ("right english goes right, left goes left (%.1f, %.1f)"):format(rR, rL))
+
 print(("%d passed, %d failed"):format(passes, fails))
 if fails > 0 then error("tests failed") end

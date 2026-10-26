@@ -81,6 +81,82 @@ hint.TextSize = 15
 hint.Text = ""
 hint.Parent = gui
 
+-- Spin: click a spot on the cue-ball picture to choose where the tip hits.
+-- High is follow, low is draw, left and right are english. Arrow keys too.
+local spinTop, spinSide = 0, 0
+local spinPad = Instance.new("TextButton")
+spinPad.Name = "Spin"
+spinPad.Text = ""
+spinPad.AutoButtonColor = false
+spinPad.Size = UDim2.fromOffset(96, 96)
+spinPad.Position = UDim2.new(1, -120, 1, -150)
+spinPad.BackgroundColor3 = Color3.fromRGB(245, 243, 235)
+spinPad.Visible = false
+spinPad.Parent = gui
+Instance.new("UICorner", spinPad).CornerRadius = UDim.new(1, 0)
+local spinStroke = Instance.new("UIStroke", spinPad)
+spinStroke.Color = Color3.fromRGB(40, 30, 30)
+spinStroke.Thickness = 2
+local cross = Instance.new("Frame")
+cross.Size = UDim2.new(1, 0, 0, 1)
+cross.Position = UDim2.fromScale(0, 0.5)
+cross.BackgroundColor3 = Color3.fromRGB(190, 185, 175)
+cross.BorderSizePixel = 0
+cross.Parent = spinPad
+local crossV = cross:Clone()
+crossV.Size = UDim2.new(0, 1, 1, 0)
+crossV.Position = UDim2.fromScale(0.5, 0)
+crossV.Parent = spinPad
+local tipDot = Instance.new("Frame")
+tipDot.Size = UDim2.fromOffset(14, 14)
+tipDot.AnchorPoint = Vector2.new(0.5, 0.5)
+tipDot.Position = UDim2.fromScale(0.5, 0.5)
+tipDot.BackgroundColor3 = Color3.fromRGB(220, 40, 40)
+tipDot.Parent = spinPad
+Instance.new("UICorner", tipDot).CornerRadius = UDim.new(1, 0)
+local spinLabel = Instance.new("TextLabel")
+spinLabel.Size = UDim2.new(0, 140, 0, 18)
+spinLabel.Position = UDim2.new(1, -142, 1, -48)
+spinLabel.BackgroundTransparency = 1
+spinLabel.TextColor3 = Color3.fromRGB(230, 220, 205)
+spinLabel.Font = Enum.Font.Gotham
+spinLabel.TextSize = 14
+spinLabel.Text = "Center ball"
+spinLabel.Visible = false
+spinLabel.Parent = gui
+
+local function setSpin(top: number, side: number)
+	-- Keep the tip on the ball: the strike point stays inside a circle.
+	local m = math.sqrt(top * top + side * side)
+	if m > 1 then
+		top, side = top / m, side / m
+	end
+	spinTop, spinSide = top, side
+	tipDot.Position = UDim2.fromScale(0.5 + side * 0.4, 0.5 - top * 0.4)
+	local parts = {}
+	if top > 0.15 then
+		table.insert(parts, "Follow")
+	elseif top < -0.15 then
+		table.insert(parts, "Draw")
+	end
+	if side > 0.15 then
+		table.insert(parts, "Right english")
+	elseif side < -0.15 then
+		table.insert(parts, "Left english")
+	end
+	spinLabel.Text = if #parts > 0 then table.concat(parts, " + ") else "Center ball"
+end
+
+spinPad.MouseButton1Down:Connect(function()
+	-- GetMouseLocation and AbsolutePosition share one origin because this
+	-- ScreenGui ignores the top-bar inset.
+	local m = UserInputService:GetMouseLocation()
+	local abs, size = spinPad.AbsolutePosition, spinPad.AbsoluteSize
+	local u = ((m.X - abs.X) / size.X - 0.5) / 0.4
+	local v = ((m.Y - abs.Y) / size.Y - 0.5) / 0.4
+	setSpin(-v, u)
+end)
+
 -- Aim guide: a line to the ghost ball, the ghost ball, and the stick. ----
 local function guidePart(name: string, shape: Enum.PartType?): Part
 	local p = Instance.new("Part")
@@ -212,7 +288,15 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	if processed or not myTurn() then
 		return
 	end
-	if input.KeyCode == Enum.KeyCode.Q then
+	if input.KeyCode == Enum.KeyCode.Up then
+		setSpin(spinTop + 0.25, spinSide)
+	elseif input.KeyCode == Enum.KeyCode.Down then
+		setSpin(spinTop - 0.25, spinSide)
+	elseif input.KeyCode == Enum.KeyCode.Left then
+		setSpin(spinTop, spinSide - 0.25)
+	elseif input.KeyCode == Enum.KeyCode.Right then
+		setSpin(spinTop, spinSide + 0.25)
+	elseif input.KeyCode == Enum.KeyCode.Q then
 		fine -= math.rad(0.25)
 	elseif input.KeyCode == Enum.KeyCode.E then
 		fine += math.rad(0.25)
@@ -241,8 +325,9 @@ UserInputService.InputEnded:Connect(function(input)
 		charging = false
 		powerBack.Visible = false
 		if myTurn() then
-			Shoot:FireServer(angle + fine, math.max(power(), 0.03))
+			Shoot:FireServer(angle + fine, math.max(power(), 0.03), spinTop, spinSide)
 			fine = 0
+			setSpin(0, 0)
 			hideGuide()
 		end
 	end
@@ -265,6 +350,8 @@ RunService.RenderStepped:Connect(function()
 			hideGuide()
 		end
 		powerBack.Visible = false
+		spinPad.Visible = false
+		spinLabel.Visible = false
 		hint.Text = if state and myIndex() and state.winner == nil and not animating then "Waiting for the other shot." else ""
 		return
 	end
@@ -290,7 +377,9 @@ RunService.RenderStepped:Connect(function()
 		cuePart.Transparency = 0
 	end
 
-	hint.Text = "Aim with the pointer. Hold to power up, let go to shoot. Q / E fine-tune."
+	hint.Text = "Aim with the pointer. Hold to power up, let go to shoot. Q / E fine-tune. Arrows or the white ball set spin."
+	spinPad.Visible = true
+	spinLabel.Visible = true
 	if not charging then
 		local px, py = pointerOnTable()
 		if px and py then

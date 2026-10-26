@@ -3,7 +3,9 @@
 An 8-ball pool hall for Roblox, built entirely from code with
 [Rojo](https://rojo.space/). Walk up to the table, press **E** to join (two
 players play 8-ball; one player practises), aim with the mouse or a finger,
-hold to build power, let go to shoot.
+hold to build power, let go to shoot. Click the white ball in the corner (or
+use the arrow keys) to hit high for follow, low for draw, or left and right
+for english.
 
 ## Layout
 
@@ -29,7 +31,7 @@ own copy of the table.
 ```
 rojo build default.project.json -o dist/TheLounge.rbxlx
 cd tools/luau-run && cargo build --release && cd ../..
-tools/luau-run/target/release/luau-run tests/run.luau        # 172 checks
+tools/luau-run/target/release/luau-run tests/run.luau        # 176 checks
 tools/luau-run/target/release/luau-run --check $(find src -name '*.luau')
 ```
 
@@ -40,6 +42,7 @@ players under Test > Clients and Servers).
 
 - Never run inside Roblox Studio yet: the physics and rules are tested, the
   world, camera and input are untested until somebody presses Play.
-- No spin (English), no ball rotation while rolling, no ball numbers printed
-  on the balls, no sounds.
+- Spin is a simple model: follow and draw act at the first contact, english
+  at the cushions. No squirt, swerve or throw. Balls slide rather than roll,
+  so numbers sit on top. No sounds.
 - 9-ball mode, a ranked ladder, cue skins (the place to sell Robux items).

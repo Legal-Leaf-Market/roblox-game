@@ -36,6 +36,13 @@ Config.BALL_RESTITUTION = 0.94
 Config.CUSHION_RESTITUTION = 0.72
 Config.STOP_SPEED = 0.4
 
+-- Spin. FOLLOW_DRAW scales how much of the impact speed the cue ball gets
+-- back along the shot line (forward for follow, backward for draw).
+-- SIDE_KICK is how much english turns a rebound. SPIN_FADE is per second.
+Config.FOLLOW_DRAW = 0.55
+Config.SIDE_KICK = 0.35
+Config.SPIN_FADE = 0.6
+
 Config.STEP = 1 / 480 -- physics substep
 Config.FRAME = 1 / 60 -- playback frame
 Config.MAX_TIME = 25 -- a shot can never run longer than this

@@ -127,6 +127,26 @@ function World.build(): (Model, Folder)
 			part({ Name = "B" .. n .. "Band", Shape = Enum.PartType.Cylinder, Size = Vector3.new(d * 0.5, d * 1.02, d * 1.02), CanCollide = false, Material = Enum.Material.SmoothPlastic, Color = rgb(Config.colorOf(n)), Parent = balls })
 		end
 		b:SetAttribute("Ball", n)
+		-- The number: a white disc on top, the way a real ball shows it from
+		-- above. Balls slide rather than roll here, so it stays on top.
+		if n > 0 then
+			local bb = Instance.new("BillboardGui")
+			bb.Name = "Number"
+			bb.Size = UDim2.new(d * 0.62, 0, d * 0.62, 0)
+			bb.StudsOffsetWorldSpace = Vector3.new(0, d * 0.42, 0)
+			bb.LightInfluence = 0
+			bb.MaxDistance = 40
+			bb.Parent = b
+			local disc = Instance.new("TextLabel")
+			disc.Size = UDim2.fromScale(1, 1)
+			disc.BackgroundColor3 = Color3.fromRGB(250, 248, 240)
+			disc.Text = tostring(n)
+			disc.TextScaled = true
+			disc.Font = Enum.Font.GothamBold
+			disc.TextColor3 = Color3.fromRGB(20, 20, 20)
+			disc.Parent = bb
+			Instance.new("UICorner", disc).CornerRadius = UDim.new(1, 0)
+		end
 	end
 	balls.Parent = workspace
 

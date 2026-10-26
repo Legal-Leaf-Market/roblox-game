@@ -108,7 +108,7 @@ end
 
 local lastShot: { [Player]: number } = {}
 
-Shoot.OnServerEvent:Connect(function(player: Player, angle: any, power: any)
+Shoot.OnServerEvent:Connect(function(player: Player, angle: any, power: any, top: any, side: any)
 	if busy or state.winner then
 		return
 	end
@@ -118,6 +118,9 @@ Shoot.OnServerEvent:Connect(function(player: Player, angle: any, power: any)
 	if typeof(angle) ~= "number" or typeof(power) ~= "number" or angle ~= angle or power ~= power then
 		return
 	end
+	-- Spin is optional; anything that is not a real number means none.
+	local spinTop = if typeof(top) == "number" and top == top then math.clamp(top, -1, 1) else 0
+	local spinSide = if typeof(side) == "number" and side == side then math.clamp(side, -1, 1) else 0
 	if os.clock() - (lastShot[player] or 0) < 0.5 then
 		return
 	end
@@ -125,7 +128,7 @@ Shoot.OnServerEvent:Connect(function(player: Player, angle: any, power: any)
 
 	busy = true
 	state.ballInHand = false
-	local res = Physics.shoot(balls, angle, math.clamp(power, 0, 1))
+	local res = Physics.shoot(balls, angle, math.clamp(power, 0, 1), spinTop, spinSide)
 	Play:FireAllClients(res.frames, (function()
 		local ids = {}
 		for _, b in balls do

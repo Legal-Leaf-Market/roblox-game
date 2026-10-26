@@ -98,12 +98,21 @@ local function snapshot(balls: { Ball }): { number }
 end
 
 -- Strike the cue ball. angle in radians (0 = +x), power 0..1.
-function Physics.shoot(balls: { Ball }, angle: number, power: number): Result
+-- spin: where the tip meets the cue ball, each -1..1.
+--   top > 0 is follow (hit high: it rolls on through the object ball),
+--   top < 0 is draw (hit low: it comes back). side > 0 is right english,
+--   which kicks the cue ball off a cushion toward its right.
+-- A simple model on purpose: the spin is spent at the first ball contact
+-- (follow/draw) and at cushions (side), and fades as the ball travels.
+function Physics.shoot(balls: { Ball }, angle: number, power: number, top: number?, side: number?): Result
 	local cue = Physics.find(balls, 0)
 	assert(cue and not cue.pocketed, "cue ball must be on the table")
 	power = math.clamp(power, 0.02, 1)
 	local speed = Config.MAX_SPEED * power
 	cue.vx, cue.vy = math.cos(angle) * speed, math.sin(angle) * speed
+	local spinTop = math.clamp(top or 0, -1, 1)
+	local spinSide = math.clamp(side or 0, -1, 1)
+	local shotDx, shotDy = math.cos(angle), math.sin(angle)
 
 	local events: Events = { firstHit = nil, pocketed = {}, railAfterContact = false, scratch = false }
 	local frames = { snapshot(balls) }
@@ -131,6 +140,9 @@ function Physics.shoot(balls: { Ball }, angle: number, power: number): Result
 				end
 			end
 		end
+		local fade = 1 - Config.SPIN_FADE * step
+		spinTop *= fade
+		spinSide *= fade
 
 		-- Ball against ball.
 		for i = 1, #balls do
@@ -151,6 +163,16 @@ function Physics.shoot(balls: { Ball }, angle: number, power: number): Result
 								a.vy -= j2 * ny
 								b.vx += j2 * nx
 								b.vy += j2 * ny
+								if a.id == 0 or b.id == 0 then
+									-- Follow or draw, spent on the cue ball's first contact.
+									if spinTop ~= 0 then
+										local cueB = if a.id == 0 then a else b
+										local kick = spinTop * Config.FOLLOW_DRAW * rel
+										cueB.vx += shotDx * kick
+										cueB.vy += shotDy * kick
+										spinTop = 0
+									end
+								end
 								if events.firstHit == nil then
 									if a.id == 0 then
 										events.firstHit = b.id
@@ -190,12 +212,25 @@ function Physics.shoot(balls: { Ball }, angle: number, power: number): Result
 					local hit = false
 					if math.abs(b.x) > Config.HALF_X and not inMouthX(b.y) then
 						b.x = math.sign(b.x) * Config.HALF_X
+						local into = math.abs(b.vx)
 						b.vx = -b.vx * Config.CUSHION_RESTITUTION
+						if b.id == 0 and spinSide ~= 0 then
+							-- Right english sends the rebound to the shooter's right.
+							-- Travelling (sx, 0), right is (0, sx) in table units,
+							-- which is the camera's right in the world.
+							b.vy += math.sign(b.x) * spinSide * Config.SIDE_KICK * into
+							spinSide *= 0.5
+						end
 						hit = true
 					end
 					if math.abs(b.y) > Config.HALF_Y and not inMouthY(b.x) then
 						b.y = math.sign(b.y) * Config.HALF_Y
+						local into = math.abs(b.vy)
 						b.vy = -b.vy * Config.CUSHION_RESTITUTION
+						if b.id == 0 and spinSide ~= 0 then
+							b.vx += -math.sign(b.y) * spinSide * Config.SIDE_KICK * into
+							spinSide *= 0.5
+						end
 						hit = true
 					end
 					if hit and events.firstHit ~= nil then
